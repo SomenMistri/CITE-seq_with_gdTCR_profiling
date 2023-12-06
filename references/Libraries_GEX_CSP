@@ -1,0 +1,9 @@
+fastqs,sample,library_type
+/gpfs1/home/s/m/smistri/scratch/10XB6_vs_SAP_KO_Neonatal_thymus_08-10-2020/Boyson_SM_iLabs_14954_08312020/,NeonatalThymus_GEX_1_D9_1,Gene Expression
+/gpfs1/home/s/m/smistri/scratch/10XB6_vs_SAP_KO_Neonatal_thymus_08-10-2020/Boyson_SM_iLabs_14954_08312020/,NeonatalThymus_GEX_2_D9_2,Gene Expression
+/gpfs1/home/s/m/smistri/scratch/10XB6_vs_SAP_KO_Neonatal_thymus_08-10-2020/Boyson_SM_iLabs_14954_08312020/,NeonatalThymus_GEX_3_D9_3,Gene Expression
+/gpfs1/home/s/m/smistri/scratch/10XB6_vs_SAP_KO_Neonatal_thymus_08-10-2020/Boyson_SM_iLabs_14954_08312020/,NeonatalThymus_GEX_4_D9_4,Gene Expression
+/gpfs1/home/s/m/smistri/scratch/10XB6_vs_SAP_KO_Neonatal_thymus_08-10-2020/Boyson_SM_iLabs_14954_08312020/,NeonatalThymus_CSP_1_F7_1,Antibody Capture
+/gpfs1/home/s/m/smistri/scratch/10XB6_vs_SAP_KO_Neonatal_thymus_08-10-2020/Boyson_SM_iLabs_14954_08312020/,NeonatalThymus_CSP_2_F7_2,Antibody Capture
+/gpfs1/home/s/m/smistri/scratch/10XB6_vs_SAP_KO_Neonatal_thymus_08-10-2020/Boyson_SM_iLabs_14954_08312020/,NeonatalThymus_CSP_3_F7_3,Antibody Capture
+/gpfs1/home/s/m/smistri/scratch/10XB6_vs_SAP_KO_Neonatal_thymus_08-10-2020/Boyson_SM_iLabs_14954_08312020/,NeonatalThymus_CSP_4_F7_4,Antibody Capture
