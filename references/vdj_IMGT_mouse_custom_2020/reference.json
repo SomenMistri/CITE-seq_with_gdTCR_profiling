@@ -1,0 +1,10 @@
+{
+    "fasta_hash": "7aaa3c10d2a8515d5dc395d46a106b8eda8ec9b5", 
+    "genomes": "vdj_IMGT_mouse", 
+    "gtf_hash": null, 
+    "input_fasta_files": "vdj_IMGT_mouse-mkvdjref-input.fasta", 
+    "input_gtf_files": null, 
+    "mkref_version": "3.1.0", 
+    "type": "V(D)J Reference", 
+    "version": null
+}

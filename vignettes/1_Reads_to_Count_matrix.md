@@ -37,7 +37,7 @@ For detailed commands used for FastQC and MultiQC Analysis, refer to the bash sc
 ## 3. Alignment and Count Matrix Generation
 
 The GEX and CSP libraries are aligned to the mouse genome using `cellranger count` twice:
-1. **First Run:** Providing information only about hashtag oligo antibodies. The output of this run is named "HTO-GEX_output"
+1. **First Run: Providing information only about hashtag oligo antibodies. The output of this run is named "HTO-GEX_output"**
 - [First Cellranger Count Run - Hashtag Oligo Antibodies (3.1_cellranger_count_GEX_HTO.sh)](/bash_scripts/3.1_cellranger_count_GEX_HTO.sh). 
 
 Files indicating the fastq.gz locations ["Libraries_GEX_CSP"](/references/Libraries_GEX_CSP) and feature references ["Feature_reference_HTO"](/references/Feature_reference_HTO) are required for this run.
@@ -47,7 +47,7 @@ Files indicating the fastq.gz locations ["Libraries_GEX_CSP"](/references/Librar
     - /HTO-GEX_output/outs/filtered_feature_bc_matrix.h5
     - /HTO-GEX_output/outs/web_summary.html
 
-2. **Second Run:** Providing information only about antibody-derived tags targeting cell surface protein expression. The output of this run is named "ADT-GEX_output".
+2. **Second Run: Providing information only about antibody-derived tags targeting cell surface protein expression. The output of this run is named "ADT-GEX_output".**
 - [Second Cellranger Count Run - Antibody-Derived Tags (3.2_cellranger_count_GEX_ADT.sh)](/bash_scripts/3.2_cellranger_count_GEX_ADT.sh). 
 
 Files indicating the fastq.gz locations ["Libraries_GEX_CSP"](/references/Libraries_GEX_CSP) and feature references ["Feature_reference_ADT"](/references/Feature_reference_ADT) are required for this run.
@@ -63,13 +63,14 @@ As we are will be doing a separate analysis of TCR VDJ from the enriched VDJ lib
 To circumvent this problem, we can take a cellranger count output (either ADT-GEX or HTO-GEX), locate the "filtered_feature_bc_matrix.h5" file and run the cellranger reanalyze step using a list of all the TCR related genes stored in a .csv file ([ex_TCR_GENES_CSV.csv](/references/ex_TCR_GENES_CSV.csv)).
 
 - For detailed cellranger commands used for removing TCR genes from the count matrix, refer to the bash script [4_TCR_counts_removal.sh](/bash_scripts/4_TCR_counts_removal.sh). The output of this run is named "Reanalyze_ADT_GEX_output".
+ 
   - Major output files of interest that needs to downloaded for R Seurat analysis:
     - /Reanalyze_ADT_GEX_output/outs/filtered_feature_bc_matrix (rename it to "Reanalyze_ADT_filtered_feature_bc_matrix")
     - /Reanalyze_ADT_GEX_output/outs/filtered_feature_bc_matrix.h5
     - /Reanalyze_ADT_GEX_output/outs/web_summary.html
 
 ## 5. Processing of enriched VDj library
-The γδ VDJ enriched Fastq files are aligned to a custom-made mouse IMGT reference () using the `cellranger vdj` argument on the VACC cluster.
+The γδ VDJ enriched Fastq files are aligned to a custom-made mouse IMGT reference ([vdj_IMGT_mouse_custom_2020](/references/vdj_IMGT_mouse_custom_2020) using the `cellranger vdj` argument on the VACC cluster.
 
 - For detailed cellranger commands used for processing the VDJ library fastq.gz files can be found in this bash script [5_cellranger_VDJ.sh](/bash_scripts/5_cellranger_VDJ.sh). The output of this run is named "VDJ_output".
   
@@ -78,4 +79,6 @@ The γδ VDJ enriched Fastq files are aligned to a custom-made mouse IMGT refere
     - /VDJ_output/outs/filtered_contig_annotations.csv (this is the file of interest if you are looking for conventional αβ TCR)
     - /VDJ_output/outs/web_summary.html
 
-*After this point, the Downstream processing of this dataset is possible in personal mac or pc*
+**After this point, the Downstream processing of this dataset is possible in personal mac or pc**
+
+*******************END*******************
