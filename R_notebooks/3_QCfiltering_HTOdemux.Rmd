@@ -1,5 +1,5 @@
 ---
-title: "R Notebook - 1_QC_filtering_hashtag_demux_ADT_check"
+title: "R Notebook - 3_QCfiltering_HTOdemux"
 output: html_notebook
 ---
 #### Some useful links
@@ -393,6 +393,7 @@ table(data_filtered_demux.singlet$v_gene_d)
 
 saveRDS(data_filtered_demux.singlet, "data_filtered_demux.singlet.rds")
 ```
+
 #### make ridgeplot on B6 singlets
 
 ```{r}
