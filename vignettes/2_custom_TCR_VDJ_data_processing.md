@@ -1,7 +1,8 @@
-# Cellranger VDJ Data Processing
+# Cellranger VDJ Data processing
 
 ## Description
 This Bash script is designed to handle and process output data obtained from Cellranger VDJ, specifically focusing on gene expression data related to T-cell receptors (TRGV and TRDV).
+- [Custom Cellranger VDJ data processing for Seurat (2_custom_VDJ_data_processing.sh)](/bash_scripts/2_custom_VDJ_data_processing.sh). 
 
 ## Purpose
 The script performs the following tasks:
@@ -15,6 +16,8 @@ The script performs the following tasks:
 ## Instructions
 ### Pre-requisites
 - Ensure the 'raw_data.txt' file (which has been made from the all_contig_annotations.csv file) and 'barcodes.tsv.gz' files exist in the parent directory.
+- Ensure that column name formatting of the 'raw_data.txt' file matches with the provided [template.txt )](/references/template.txt) file.
+
 
 ### Execution
 1. Navigate to the directory containing the Cellranger VDJ output.
