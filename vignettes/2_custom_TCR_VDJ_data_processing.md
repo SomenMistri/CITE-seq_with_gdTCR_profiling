@@ -1,4 +1,4 @@
-# Cellranger VDJ Data processing
+# Cellranger VDJ data processing for Seurat R package
 
 ## Description
 This Bash script is designed to handle and process output data obtained from Cellranger VDJ, specifically focusing on gene expression data related to T-cell receptors (TRGV and TRDV).
@@ -26,4 +26,4 @@ The script performs the following tasks:
 ### Finalization
 Post-processing in Excel is recommended to pair barcode-linked TRGV and TRDV information together and perform additional manipulation or analysis on the processed data.
 
-**Note:** Review the script carefully, follow the instructions, and leverage the processed data for further analysis or downstream applications.
+**Note:** Review the script carefully and follow the instructions. This script takes some to finish. It is possible to run this in VACC.

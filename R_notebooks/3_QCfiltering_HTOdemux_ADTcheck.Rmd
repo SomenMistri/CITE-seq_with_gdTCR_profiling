@@ -1,0 +1,418 @@
+---
+title: "R Notebook - 1_QC_filtering_hashtag_demux_ADT_check"
+output: html_notebook
+---
+#### Some useful links
+https://satijalab.org/seurat/articles/pbmc3k_tutorial.html
+https://satijalab.org/seurat/articles/merge_vignette.html
+https://satijalab.org/seurat/articles/integration_introduction.html
+https://satijalab.org/seurat/articles/sctransform_vignette.html
+
+
+#### Load required packages
+To load the required packages using the library() function, run chunk 1 by clicking on the "Run Current Chunk" button on the right. This will load the following packages.
+
+```{r chunk 1}
+library(Seurat)
+library(tidyverse)
+library(Matrix)
+library(RCurl)
+library(scales)
+library(sctransform)
+library(readxl)
+library(ggpubr)
+library(svglite)
+```
+Note: If you have not installed the packages yet, then install them first before loading
+
+#### Load individual count matrices (cellranger output)
+The Read10X() function reads in the output of the cellranger pipeline from 10X, returning a unique molecular identified (UMI) count matrix. The values in this matrix represent the number of molecules for each feature (i.e. gene; row) that are detected in each cell (column).
+Load all three datasets: GEX+ADT, GEX+HTO, and VDJ
+```{r}
+gex_adt_data <- Read10X("GEX_ADT_TCRreanalyze_filtered_feature_bc_matrix") # we are gonna use Gene expression data and ADT data from this file
+gex_hto_data <- Read10X("GEX_HTO_filtered_feature_bc_matrix") # we are gonna only HTO data from this file
+TCR_data <- read_excel("VDJ_TRGV_TRDV_merged.xlsx") #this one has the final edited TCR VDJ data
+
+#Subsets so only the first line of each barcode is kept (to make sure duplicates are gone). There should be no duplicates in the vdj data the start too
+TCR_data <- TCR_data[!duplicated(TCR_data[c("barcode")]), ]
+# Format the "TCR_data" so that it can be used as metadata
+TCR_data <- TCR_data %>% 
+  column_to_rownames("barcode") %>% 
+  as.data.frame()
+
+
+#check individual data matrix types
+#str(gex_adt_data$`Gene Expression`)
+#str(gex_adt_data$`Antibody Capture`)
+#str(gex_hto_data$`Antibody Capture`)
+#str(TCR_data)
+```
+
+
+#### Make Seurat objects, add TCR metadata, add HTO and ADT assays########
+```{r}
+# Select the cell barcodes detected by both GEX+HTO and GEX+ADT count matrices
+# We do not need to match  cell barcodes with TCR data as it is already matched with the GEX+HTO data (matched during the custom VDJ analysis step)
+gex_hto_adt_joint <- intersect(colnames(gex_adt_data$`Gene Expression`), colnames(gex_hto_data$`Antibody Capture`))
+
+# Subset the GEX+HTO and GEX+ADT counts using the joint cell barcodes.
+# This step ensures that each object has the same number of barcodes.
+gex_adt_data$`Gene Expression` <- as.matrix(gex_adt_data$`Gene Expression`[, gex_hto_adt_joint])
+gex_adt_data$`Antibody Capture` <- as.matrix(gex_adt_data$`Antibody Capture`[, gex_hto_adt_joint])
+gex_hto_data$`Antibody Capture` <- as.matrix(gex_hto_data$`Antibody Capture`[, gex_hto_adt_joint])
+
+# Create a Seurat object "gex_seurat" using the gene expression data.
+# This object will be used for further analysis.
+gex_seurat = CreateSeuratObject(counts = gex_adt_data$`Gene Expression`)
+
+# Add the metadata "TCR_data" to the "gex_seurat" Seurat object.
+# This metadata provides additional information about the cells.
+gex_seurat_VDJ <- AddMetaData(object = gex_seurat, metadata = TCR_data)
+
+# Create an Assay object "HTO" from the Antibody Capture HTO data
+# and add it to the "gex_seurat_VDJ" Seurat object.
+# This allows the analysis of high-throughput oligonucleotide (HTO) data.
+gex_seurat_VDJ[['HTO']] = CreateAssayObject(counts = gex_hto_data$`Antibody Capture`)
+
+# Create an Assay object "ADT" from the Antibody Capture ADT data
+# and add it to the "gex_seurat_VDJ" Seurat object.
+# This allows the analysis of antibody-derived tag (ADT) data.
+gex_seurat_VDJ[['ADT']] = CreateAssayObject(counts = gex_adt_data$`Antibody Capture`)
+```
+
+
+#### Cell Cycle Scoring
+In some cases, there is a need for mitigating the effects of cell cycle heterogeneity in scRNA-seq data.This can be done by calculating cell cycle phase scores based on known cell cycle markers , and regressing these out of the data during pre-processing.
+
+To perform cell cycle scoring, run the foolowing. In this chunk, we are first Log Normalizing individual seurat objects using the NormalizeData() function. Then, we are using the CellCycleScoring() function to assign each cell a cell cycle score, based on its expression of G2/M and S phase markers. Seurat stores the s.genes and g2m.genes in the "cc.genes.updated.2019" list.
+Note:  If you receive any warning, read it carefully. You can ignore some warnings, while take action upon receiving some.
+
+```{r}
+#segregate the "cc.genes.updated.2019" list into markers of G2/M phase and markers of S phase
+#Note: this code contains "str_to_title" function to make it compatible with mouse gene list
+s.genes <- str_to_title(cc.genes.updated.2019$s.genes)
+g2m.genes <- str_to_title(cc.genes.updated.2019$g2m.genes)
+
+#Prior to running "CellCycleScoring" command, each seurat object needs to be Lognormalized using "NormalizeData" function
+data_norm <- NormalizeData(gex_seurat_VDJ, normalization.method = "LogNormalize", scale.factor = 10000, verbose = FALSE)
+
+#Now perform CellCycleScoring for each seurat objects
+data_norm <- CellCycleScoring(data_norm, s.features = s.genes, g2m.features = g2m.genes, set.ident = FALSE, verbose = FALSE)
+
+# view cell cycle scores and phase assignments
+head(data_norm)
+```
+
+#### Calculate additional quality control metrics
+Run the following chunk to calculate the mitochondrial and ribosomal transcript percentage per cell. Seurat has a function that enables us to do this. The PercentageFeatureSet() function can take a specific pattern and search through the dataset for that pattern. We can search for mitochondrial genes by looking for the pattern "MT-". Similarly, for the ribosomal genes, we can look for the pattern "^RP[SL]". Usually, cells with high proportions of mitochondrial genes are considered as poor-quality cells. On the other hand, percentage of ribosomal transcript per cell varies greatly from cell type to cell type. Therefore, caution should be taken to use percent.RIBO values to filter out low quality cells.
+
+```{r}
+#The [[ operator can add columns to object metadata. This is a great place to stash QC stats
+#First add column with mitochondiral gene expression
+data_norm[["percent.mt"]] <- PercentageFeatureSet(data_norm, pattern = "^mt-")
+#Add column with ribosomal gene expression
+data_norm[["percent.ribo"]] <- PercentageFeatureSet(data_norm, pattern = "^Rp[sl]")
+#NOTE: this calculation is performed per cell. That is why this step can be performed on merged data
+#Now let's make sure that all the qc metrics are present in the metadata by using the head() function:
+head (data_norm)
+```
+
+#### Visualize the common QC metrics (before performing any filtering)
+
+The following R script chunk allows you to plot common quality control (QC) metrics and visualize them before applying any filtering steps.
+
+```{r}
+# Plot violin plots for nFeature_RNA and nCount_RNA
+# These metrics represent the number of detected genes and total counts per cell, respectively
+p1 <- VlnPlot(data_norm, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2)
+p1
+
+# Plot violin plots for percent.mt and percent.ribo
+# These metrics represent the percentage of mitochondrial genes and ribosomal genes, respectively
+p2 <- VlnPlot(data_norm, features = c("percent.mt","percent.ribo"), ncol = 2)
+p2
+
+# Combine the violin plots into a single figure
+Fig1 <- ggarrange(p1, p2, ncol = 2)
+
+# Save the figure as a PNG file
+ggsave(Fig1, path = "Figs", filename = "before_filtering_QC_Vlnplot.png",  height=4, width=8, units='in', dpi = 300, bg = "transparent", device='png')
+# Save the figure as an SVG file
+ggsave(Fig1, filename = "before_filtering_QC_Vlnplot.svg",  height=4, width=8, units='in', dpi = 300, bg = "transparent", device='svg')
+
+# Plot featureScatter plots for percent.ribo vs percent.mt and nCount_RNA vs nFeature_RNA
+# These plots visualize the relationship between different QC metrics
+p3 <- FeatureScatter(data_norm, feature1 = "percent.ribo", feature2 = "percent.mt")
+p3
+p4 <- FeatureScatter(data_norm, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+p4
+
+# Combine the featureScatter plots into a single figure
+Fig2 <- ggarrange(p3, p4, ncol = 2)
+
+# Save the figure as a PNG file
+ggsave(Fig2, path = "Figs", filename = "before_filtering_QC_FeatureScatter.png",  height=4, width=10, units='in', dpi = 300, bg = "transparent", device='png')
+# Save the figure as an SVG file
+ggsave(Fig2, filename = "before_filtering_QC_FeatureScatter.svg",  height=4, width=10, units='in', dpi = 300, bg = "transparent", device='svg')
+
+# Create a metadata dataframe from the Seurat object
+metadata <- data_norm@meta.data
+
+# Visualize the correlation between nFeature_RNA and nCount_RNA and identify cells with low gene/UMI numbers
+# The plot includes color coding based on percent.mt, representing the percentage of mitochondrial genes
+metadata %>% 
+  ggplot(aes(x=nCount_RNA, y=nFeature_RNA, color=percent.mt)) + 
+  geom_point() + 
+  scale_colour_gradient(low = "gray90", high = "black") +
+  stat_smooth(method=lm) +
+  scale_x_log10() +
+  scale_y_log10() +
+  theme_classic() +
+  geom_vline(xintercept = 500) +
+  geom_hline(yintercept = 500) +
+  facet_wrap(~orig.ident)
+```
+
+
+#### Perform coarse-filtering
+Performing coarse filtering before fine filtering is a useful practice. Coarse filtering helps remove obvious low-quality cells without running the risk of trashing cells of interest. This filtering is performed dependent on poor RNA content, high levels of mitochondrial gene expression, or other undesirable characteristics. 
+The following chunk of code performs the coarse filtering on the dataset based on specified thresholds. It also includes the visualization of various QC metrics on the filtered cells.
+
+```{r}
+# Perform coarse filtering
+data_filtered <- subset(data_norm, subset = nFeature_RNA > 500 & nFeature_RNA < 8000 & nCount_RNA < 90000 & percent.mt < 25 & percent.ribo > 0.5)
+
+# Plot violin plots for nFeature_RNA and nCount_RNA on coarse-filtered cells
+# These metrics represent the number of detected genes and total counts per cell, respectively
+p1 <- VlnPlot(data_filtered, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2)
+p1
+
+# Plot violin plots for percent.mt and percent.ribo on coarse-filtered cells
+# These metrics represent the percentage of mitochondrial genes and ribosomal genes, respectively
+p2 <- VlnPlot(data_filtered, features = c("percent.mt","percent.ribo"), ncol = 2)
+p2
+
+# Combine the violin plots into a single figure
+Fig1 <- ggarrange(p1, p2, ncol = 2)
+
+# Save the figure as a PNG file
+ggsave(Fig1, path = "Figs", filename = "coarse_filtering_QC_Vlnplot.png",  height=4, width=8, units='in', dpi = 300, bg = "transparent", device='png')
+# Save the figure as an SVG file
+ggsave(Fig1, filename = "coarse_filtering_QC_Vlnplot.svg",  height=4, width=8, units='in', dpi = 300, bg = "transparent", device='svg')
+
+# Plot featureScatter plots for percent.ribo vs percent.mt and nCount_RNA vs nFeature_RNA
+# These plots visualize the relationship between different QC metrics
+p3 <- FeatureScatter(data_filtered, feature1 = "percent.ribo", feature2 = "percent.mt")
+p3
+p4 <- FeatureScatter(data_filtered, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+p4
+
+# Combine the featureScatter plots into a single figure
+Fig2 <- ggarrange(p3, p4, ncol = 2)
+
+# Save the figure as a PNG file
+ggsave(Fig2, path = "Figs", filename = "coarse_filtering_QC_FeatureScatter.png",  height=4, width=10, units='in', dpi = 300, bg = "transparent", device='png')
+# Save the figure as an SVG file
+ggsave(Fig2, filename = "coarse_filtering_QC_FeatureScatter.svg",  height=4, width=10, units='in', dpi = 300, bg = "transparent", device='svg')
+
+# Create a metadata dataframe from the on coarse-filtered Seurat object
+metadata <- data_filtered@meta.data
+
+# Visualize the correlation between nFeature_RNA and nCount_RNA and identify cells with low gene/UMI numbers
+# The plot includes color coding based on percent.mt, representing the percentage of mitochondrial genes
+metadata %>% 
+  ggplot(aes(x=nCount_RNA, y=nFeature_RNA, color=percent.mt)) + 
+  geom_point() + 
+  scale_colour_gradient(low = "gray90", high = "black") +
+  stat_smooth(method=lm) +
+  scale_x_log10() +
+  scale_y_log10() +
+  theme_classic() +
+  geom_vline(xintercept = 500) +
+  geom_hline(yintercept = 700) +
+  facet_wrap(~orig.ident)
+```
+
+#### Perform fine-filtering
+After reviewing the figures generated from the coarse-filtering step, it is recommended to proceed with fine filtering. However, it is important to exercise caution when applying stringent filtering parameters to ensure that cells of specific interest are not inadvertently excluded.
+
+```{r}
+# Perform fine filtering
+data_filtered2 <- subset(data_norm, subset = nFeature_RNA > 2000 & nFeature_RNA < 7000 & nCount_RNA < 60000 & percent.mt < 5 & percent.ribo > 5)
+
+# Plot violin plots for nFeature_RNA and nCount_RNA on fine-filtered cells
+# These metrics represent the number of detected genes and total counts per cell, respectively
+p1 <- VlnPlot(data_filtered2, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2)
+p1
+
+# Plot violin plots for percent.mt and percent.ribo on fine-filtered cells
+# These metrics represent the percentage of mitochondrial genes and ribosomal genes, respectively
+p2 <- VlnPlot(data_filtered2, features = c("percent.mt","percent.ribo"), ncol = 2)
+p2
+
+# Combine the violin plots into a single figure
+Fig1 <- ggarrange(p1, p2, ncol = 2)
+
+# Save the figure as a PNG file
+ggsave(Fig1, path = "Figs", filename = "fine_filtering_QC_Vlnplot.png",  height=4, width=8, units='in', dpi = 300, bg = "transparent", device='png')
+# Save the figure as an SVG file
+ggsave(Fig1, filename = "fine_filtering_QC_Vlnplot.svg",  height=4, width=8, units='in', dpi = 300, bg = "transparent", device='svg')
+
+# Plot featureScatter plots for percent.ribo vs percent.mt and nCount_RNA vs nFeature_RNA
+# These plots visualize the relationship between different QC metrics
+p3 <- FeatureScatter(data_filtered2, feature1 = "percent.ribo", feature2 = "percent.mt")
+p3
+p4 <- FeatureScatter(data_filtered2, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+p4
+
+# Combine the featureScatter plots into a single figure
+Fig2 <- ggarrange(p3, p4, ncol = 2)
+
+# Save the figure as a PNG file
+ggsave(Fig2, path = "Figs", filename = "fine_filtering_QC_FeatureScatter.png",  height=4, width=10, units='in', dpi = 300, bg = "transparent", device='png')
+# Save the figure as an SVG file
+ggsave(Fig2, filename = "fine_filtering_QC_FeatureScatter.svg",  height=4, width=10, units='in', dpi = 300, bg = "transparent", device='svg')
+
+# Create a metadata dataframe from the on fine-filtered Seurat object
+metadata <- data_filtered2@meta.data
+
+# Visualize the correlation between nFeature_RNA and nCount_RNA and identify cells with low gene/UMI numbers
+# The plot includes color coding based on percent.mt, representing the percentage of mitochondrial genes
+metadata %>% 
+  ggplot(aes(x=nCount_RNA, y=nFeature_RNA, color=percent.mt)) + 
+  geom_point() + 
+  scale_colour_gradient(low = "gray90", high = "black") +
+  stat_smooth(method=lm) +
+  scale_x_log10() +
+  scale_y_log10() +
+  theme_classic() +
+  geom_vline(xintercept = 500) +
+  geom_hline(yintercept = 2000) +
+  facet_wrap(~orig.ident)
+```
+
+
+#### Save the filtered seurat object
+Based on these QC metrics we would identify any failed samples and move forward with our filtered cells. Often we iterate through the QC metrics using different filtering criteria; it is not necessarily a linear process. When satisfied with the filtering criteria, we would save our filtered cell object for clustering and marker identification. Please run the following to save the filtered cells as a .rds file:
+```{r}
+saveRDS(data_filtered2, file = "data_fine_filtered.rds")
+```
+
+#### Alternative start point
+This section reads in the previously saved fine-filtered data for further analysis.
+```{r}
+#read in the saved fine filtered data
+data_filtered2 <- readRDS ("data_fine_filtered.rds")
+```
+
+##### Demultiplexing hashtags (HTOs)
+In this part, the HTO assay data is normalized using the centered log-ratio (CLR) normalization method. The resulting normalized data is stored in the data_filtered_CLR variable. Then, the cells are demultiplexed based on HTO enrichment using the HTODemux function, and the demultiplexed data is stored in the data_filtered_demux variable.
+
+```{r}
+#Normalize assay HTO using centered log-ratio (CLR) normalization method
+data_filtered_CLR <- NormalizeData(data_filtered2, assay = "HTO", normalization.method = "CLR")
+
+#Demultiplex cells based on HTO enrichment
+data_filtered_demux <- HTODemux(data_filtered_CLR, assay = "HTO", positive.quantile = 0.99)
+```
+
+
+##### Visualization of Demultiplexing
+This section provides visualizations of the demultiplexing results.
+
+```{r}
+# The enrichment for selected HTOs is visualized using ridge plots. Cells are grouped based on the maximum HTO signal, and the ridge plots are generated for the first six HTO features.
+Idents(data_filtered_demux) <- "HTO_maxID"
+data_filtered_demux$HTO_maxID <- factor(data_filtered_demux$HTO_maxID, levels =c("B6-1","B6-2","B6-3","B6-4","SAP-1","SAP-2","SAP-3","SAP-4"))
+RidgePlot(data_filtered_demux, assay = "HTO", features = rownames(data_filtered_demux[["HTO"]])[1:8], ncol = 4)
+# Save the figure as a PNG and a SVG file
+ggsave(path = "Figs", filename = "Demuliplex_QC_visualization_Ridgeplot.png",  height=5, width=8, units='in', dpi = 300, bg = "transparent", device='png')
+ggsave(filename = "Demuliplex_QC_visualization_Ridgeplot.svg",  height=5, width=8, units='in', dpi = 300, bg = "transparent", device='svg')
+
+#	A scatter plot is created to visualize pairs of HTO signals (specifically “B6-1” and “SAP-1”) and confirm their mutual exclusivity in singlets.
+FeatureScatter(data_filtered_demux, feature1 = "B6-1", feature2 = "SAP-1")
+ggsave(path = "Figs", filename = "Demuliplex_QC_visualization_FeatureScatter.png",  height=4, width=5, units='in', dpi = 300, bg = "transparent", device='png')
+ggsave(filename = "Demuliplex_QC_visualization_FeatureScatter.svg",  height=4, width=5, units='in', dpi = 300, bg = "transparent", device='svg')
+
+# Violin plots are used to compare the number of UMIs for singlets, doublets, and negative cells. Two separate violin plots are generated, one for the “nCount_RNA” feature and another for the “nFeature_RNA” feature.
+Idents(data_filtered_demux) <- "HTO_classification.global"
+p3 <- VlnPlot(data_filtered_demux, features = "nCount_RNA", pt.size = 0.1, log = FALSE)
+
+p4 <- VlnPlot(data_filtered_demux, features = "nFeature_RNA", pt.size = 0.1, log = FALSE)
+
+Fig4 <- ggarrange(p3, p4, ncol = 2)
+Fig4
+
+# Save the figure as a PNG and a SVG file
+ggsave(Fig4, path = "Figs", filename = "Demuliplex_QC_visualization_VlnPlot.png",  height=4, width=10, units='in', dpi = 300, bg = "transparent", device='png')
+# Save the figure as an SVG file
+ggsave(Fig4, filename = "Demuliplex_QC_visualization_VlnPlot.svg",  height=4, width=10, units='in', dpi = 300, bg = "transparent", device='svg')
+
+```
+
+#####Isolating Singlets and adding a column where B6 samples are pooled together and SAP KO samples are pooled together######
+```{r}
+
+#First, extract the singlets from the dataset and assign them the identifier "Singlet". This allows us to focus on individual cells for further analysis.
+Idents(data_filtered_demux) <- "HTO_classification.global"
+data_filtered_demux.singlet <- subset(data_filtered_demux, idents = "Singlet")
+
+# Next, compare the number of UMIs (Unique Molecular Identifiers) for singlets, doublets, and negative cells to assess if any cells need to be removed. Let's visualize this comparison using scatter plots and ridge plots
+Idents(data_filtered_demux.singlet) <- "HTO_maxID"
+FeatureScatter(data_filtered_demux.singlet, feature1 = "B6-2", feature2 = "SAP-2")
+ggsave(path = "Figs", filename = "Singlet_FeatureScatter.png", height=4, width=5, units='in', dpi = 300, bg = "transparent", device='png')
+ggsave("Singlet_FeatureScatter.svg", height=4, width=5, units='in', dpi = 300, bg = "transparent", device='svg')
+
+Idents(data_filtered_demux.singlet) <- "HTO_maxID"
+data_filtered_demux.singlet$HTO_maxID <- factor(data_filtered_demux.singlet$HTO_maxID, levels =c("B6-1","B6-2","B6-3","B6-4","SAP-1","SAP-2","SAP-3","SAP-4"))
+RidgePlot(data_filtered_demux.singlet, assay = "HTO", features = rownames(data_filtered_demux.singlet[["HTO"]])[1:8], ncol = 4)
+ggsave(path = "Figs", filename = "Singlet_RidgePlot.png", height=5, width=8, units='in', dpi = 300, bg = "transparent", device='png')
+ggsave("Singlet_RidgePlot.svg", height=5, width=8, units='in', dpi = 300, bg = "transparent", device='svg')
+
+# To simplify the data, create a new column where samples from B6 (B6-1, B6-2, B6-3, B6-4) are pooled together, and samples from SAP (SAP-1, SAP-2, SAP-3, SAP-4) are pooled together. We update the identifiers accordingly and store the new hash IDs as a metadata column called "hash.type".
+Idents(data_filtered_demux.singlet) <- "hash.ID"
+levels(data_filtered_demux.singlet) <- c("B6-1","B6-2","B6-3","B6-4","SAP-1","SAP-2","SAP-3","SAP-4")
+current.hash.ids = c("B6-1","B6-2","B6-3","B6-4","SAP-1","SAP-2","SAP-3","SAP-4")
+new.hash.ids = c("B6","B6","B6","B6","SAP","SAP","SAP","SAP")
+names(x = new.hash.ids) <- levels(x = data_filtered_demux.singlet)
+data_filtered_demux.singlet <- RenameIdents(object = data_filtered_demux.singlet, new.hash.ids)
+#New hash IDs are in active ident now. Now I want to save the new hash name as a new meta data column 
+hash.type <- data_filtered_demux.singlet@active.ident
+data_filtered_demux.singlet <- AddMetaData(data_filtered_demux.singlet, metadata=hash.type, col.name = "hash.type")
+
+##View  hash.type results
+table(data_filtered_demux.singlet$hash.type)
+
+##View  hash.ID results
+table(data_filtered_demux.singlet$hash.ID)
+
+##View  v_gene_g and v_gene_d results
+table(data_filtered_demux.singlet$v_gene_g)
+table(data_filtered_demux.singlet$v_gene_d)
+
+
+saveRDS(data_filtered_demux.singlet, "data_filtered_demux.singlet.rds")
+```
+#### make ridgeplot on B6 singlets
+
+```{r}
+
+Idents(data_filtered_demux.singlet) <- "hash.type"
+singlet_B6 <- subset(data_filtered_demux.singlet, idents = "B6")
+Idents(singlet_B6) <- "HTO_maxID"
+RidgePlot(singlet_B6, assay = "HTO", features = rownames(singlet_B6[["HTO"]])[1:4], ncol = 2)
+ggsave(path = "Figs", filename = "B6_Singlet_RidgePlot.png", height=5, width=4, units='in', dpi = 300, bg = "transparent", device='png')
+ggsave(path = "Figs", filename = "B6_Singlet_RidgePlot.tiff", height=5, width=4, units='in', dpi = 300, bg = "transparent", device='tiff')
+ggsave("B6_Singlet_RidgePlot.svg", height=5, width=4, units='in', dpi = 300, bg = "transparent", device='svg')
+```
+
+
+#### Check expression of ADTs using ridgeplot
+```{r}
+Idents(data_filtered_demux.singlet) <- "hash.type"
+RidgePlot(data_filtered_demux.singlet, features = c("adt_CD24", "adt_CD44", "adt_CD45RB", "adt_CD73", "adt_Vg1", "adt_Vg4", "adt_SLAMF1", "adt_SLAMF6"), ncol = 2, log = TRUE)
+ggsave(path = "Figs", filename = "ADT_Ridgeplot.png", height=12, width=7, units='in', dpi = 300, bg = "transparent", device='png')
+ggsave("ADT_Ridgeplot.svg", height=12, width=7, units='in', dpi = 300, bg = "transparent", device='svg')
+```
+
+------End------
