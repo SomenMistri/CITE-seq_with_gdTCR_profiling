@@ -2,8 +2,6 @@
 
 This repository contains an R Notebook (in .rmd format) that guides through quality control (QC) filtering and demultiplexing of high-throughput oligonucleotide (HTO) data using Seurat in R.
 
-[Access the R Notebook "3_QCfiltering_HTOdemux" file here](/vignettes/R_notebooks/3_QCfiltering_HTOdemux.Rmd)
-
 [Access the R Notebook (3_QCfiltering_HTOdemux.Rmd)](/R_notebooks/3_QCfiltering_HTOdemux.Rmd)
 The accompanying R Notebook file (.rmd) details the step-by-step process to:
 
