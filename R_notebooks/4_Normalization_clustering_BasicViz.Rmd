@@ -1,0 +1,412 @@
+---
+title: "R Notebook - 4_integration_normalization_clustering_BasicViz"
+output: html_notebook
+---
+
+Some useful links:
+- [PBMC3k Tutorial](https://satijalab.org/seurat/articles/pbmc3k_tutorial.html)
+- [Merge Vignette](https://satijalab.org/seurat/articles/merge_vignette.html)
+- [Integration Introduction](https://satijalab.org/seurat/articles/integration_introduction.html)
+- [sctransform Vignette](https://satijalab.org/seurat/articles/sctransform_vignette.html)
+
+### Get the input file:
+Following the 3_QC_filter_and_demux step there is a file named "data_filtered_demux.singlet.rds". Copy this file to the current folder where you have the .rmd file ("4_integration_normalization_clustering_BasicViz").
+
+### Load required packages:
+To load the required packages, execute the following code:
+
+```{r}
+library(Seurat)
+library(tidyverse)
+library(Matrix)
+library(RCurl)
+library(scales)
+library(sctransform)
+library(ggpubr)
+library(RColorBrewer)
+library(openxlsx)
+library(scCustomize)
+
+```
+
+Note: If you haven't installed the packages yet, please install them before loading.
+
+## Step 1: Data loading, Integration and Normalization
+
+### Load the filtered Seurat object (data_filtered_demux.singlet.rds):
+Read the filtered data by running the following code:
+```{r}
+data.filtered <- readRDS("data_filtered_demux.singlet.rds")
+
+# Let's take a look at the data to ensure everything looks good
+head(data.filtered)
+```
+
+#### (Optional) Add percent.stress information if stress related genes play a big unwanted role in clustering
+```{r}
+#Add column with stress related genes such as Fos Jun
+data.filtered[["percent.stress"]] <- PercentageFeatureSet(data.filtered, features = c("Fos","Dusp1","Jun","Junb","Klf6","Zfp36","Jund","Fosb","Ppp1r15a","H3f3b"))
+```
+
+### (optional) Data integration
+Integrating single-cell RNA datasets becomes crucial when aiming to analyze multiple datasets originating from different experimental conditions, technologies, or batches. This integration helps in uncovering broader biological insights and patterns across diverse datasets. In such scenarios, `prepSCT`, an integral function in Seurat (https://satijalab.org/seurat/articles/integration_introduction.html), proves effective. `prepSCT` facilitates the normalization, scaling, and transformation of individual datasets, preparing them for subsequent integration using Seurat's `IntegrateData` function. By mitigating batch effects and harmonizing datasets, `prepSCT` ensures a more accurate and reliable representation of the combined single-cell RNA-seq data. This streamlined preparation enhances downstream analyses, enabling a comprehensive exploration of cellular heterogeneity and biological variations across different experimental conditions.
+
+However, data integration whould be done using "prepSCT" only when needed. For this embryonic thymus γδ T cells, we don't need to integrate the B6 and SAP KO datasets as hashtags were used to process all the cells together.
+
+### Data Normalization with Cell Cycle and stress Regression
+Perform SCTransform again with cell cycle effects regressed (S.Score, G2M.Score). This allows better identification and interpretation of other biological sources of variation.
+```{r}
+data_SCT <- SCTransform(data.filtered, method = "glmGamPoi", vars.to.regress = c("S.Score", "G2M.Score", "percent.stress"), verbose = FALSE) #vst.flavor = "v2"
+```
+
+## Step 2: Clustering
+
+### Cluster the Cells of RCTransformed (cc regressed) Dataset
+Perform PCA and identify significant PCs in the integrated data:
+```{r}
+data_PCA <- RunPCA(data_SCT, npcs = 50, verbose = FALSE)
+
+# Explore heatmap of PCs
+DimHeatmap(data_PCA, dims = 1:10, cells = 500, balanced = TRUE)
+
+# Plot the elbow plot
+ElbowPlot(object = data_PCA, ndims = 50)
+
+# Print the most variable genes driving PCs
+print(x = data_PCA[["pca"]], dims = 1:20, nfeatures = 5)
+```
+
+### Perform RunUMAP(), FindNeighbors(), and FindClusters() functions one after another on the integrated dataset:
+
+```{r}
+data_clust <- RunUMAP(data_PCA, reduction = "pca", dims = 1:30)
+data_clust <- FindNeighbors(object = data_clust, dims = 1:30)
+data_clust <- FindClusters(object = data_clust, resolution = 1.0)
+
+# Visualize clustered cells
+DimPlot(data_clust, reduction = "umap", label = TRUE) + NoLegend()
+
+# Save the clustered plot
+ggsave(path = "Figs", filename = "Clusters.png", height = 4, width = 5, units = 'in', dpi = 300, bg = "transparent", device = 'png')
+#ggsave(filename = "Clusters.svg", height = 5, width = 6, units = 'in', dpi = 300, bg = "transparent", device = 'svg')
+```
+
+#### Explore technical/biological sources of variation such as the Batch Effect on SCTRansformed data:
+
+```{r}
+# Set identity classes to seurat_clusters and set levels
+Idents(object = data_clust) <- "seurat_clusters"
+data_clust$hash.ID <- factor(data_clust$hash.ID, levels =c("B6-1","B6-2","B6-3","B6-4","SAP-1","SAP-2","SAP-3","SAP-4"))
+
+# Explore the significance of batch effect on clustering
+DimPlot(data_clust, split.by = "hash.ID", label = TRUE, ncol = 4) + NoLegend()
+
+# Save the plot
+ggsave(path = "Figs", filename = "Batch_effect.png", height = 4, width = 8, units = 'in', dpi = 300, bg = "transparent", device = 'png')
+#ggsave(path = "Figs", filename = "Batch_effect.svg", height = 4, width = 8, units = 'in', dpi = 300, bg = "transparent", device = 'svg')
+```
+
+#### QC plots of SCTRansformed (cc regressed data)
+Run the following chunk to Explore the effects of cell cycle genes as well as cluster wise qc plots on SCTRansformed data:
+
+```{r}
+# Evaluating effects of cell cycle (Phase)
+p11 <- DimPlot(data_clust, group.by = "Phase", label = FALSE)
+
+# Violinplot on qc metrics
+DefaultAssay(data_clust)  <- "RNA"
+Idents(data_clust) <- "seurat_clusters"
+p12 <- VlnPlot(data_clust, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2)
+p13 <- VlnPlot(data_clust, features = c("percent.mt", "percent.ribo"), ncol = 2)
+
+# Now make a combined figure with cluster plot as a reference
+p10 <- DimPlot(data_clust, reduction = "umap", label = TRUE) + NoLegend()
+figure <- ggarrange(p10, p11, p12, p13,
+                    #labels = c(cluster0_10, cluster1_10, cluster2_10, cluster3_10),
+                    #hjust = -1.8, vjust = 1.1,
+                    ncol = 2, nrow = 2)
+figure
+ggsave(figure, path = "Figs", filename = "QC_plots.png",  height=6, width=10, units='in', dpi = 300, bg = "transparent", device='png')
+#ggsave(path = "Figs", filename = "QC_plots.svg",  height=6, width=10, units='in', dpi = 300, bg = "transparent", device='svg')
+```
+
+### Cluster marker identification
+
+To identify gene markers within each cluster, we set the default assay to "RNA" and use the `FindAllMarkers` function. This function calculates differential expression and selects markers based on specified criteria. The results are then exported to an Excel file.
+
+```{r}
+DefaultAssay(data_clust) <- "RNA"
+
+# Identify gene markers
+Idents(object = data_clust) <- "seurat_clusters"
+all_markers <- FindAllMarkers(data_clust, logfc.threshold = 0.2, min.pct = 0.2, only.pos = TRUE, test.use = "wilcox")
+
+# Export cluster markers to Excel file
+write.xlsx(all_markers, "cluster_markers_logfc0.2_minpct_0.2.xlsx")
+```
+
+
+### Save the SCTransformed (cc regressed) and clustered cells
+Run the following chunk to save the SCtransformed (cc regressed) and clustered cells as a RDS file :
+```{r}
+saveRDS(data_clust, file= "data_clust_cc_stress_regressed.rds")
+data_clust <- readRDS("data_clust_cc_stress_regressed.rds")
+```
+
+### Step 3: Data visualization
+
+#### Optional starting point
+```{r}
+data_clust <- readRDS("data_clust_cc_stress_regressed.rds")
+```
+
+#### 1. Visulalize B6 vs SAP KO cells:
+
+```{r}
+# Set identity classes to seurat_clusters and set levels
+Idents(object = data_clust) <- "seurat_clusters"
+data_clust$hash.type <- factor(data_clust$hash.type, levels =c("B6","SAP"))
+
+# Explore the significance of batch effect on clustering
+DimPlot(data_clust, split.by = "hash.type", label = TRUE, ncol = 2) + NoLegend()
+
+# Save the plot
+ggsave(path = "Figs", filename = "clusters_B6vsSAP.png", height = 4, width = 8, units = 'in', dpi = 300, bg = "transparent", device = 'png')
+ggsave(path = "Figs", filename = "clusters_B6vsSAP.svg", height = 4, width = 8, units = 'in', dpi = 300, bg = "transparent", device = 'svg')
+```
+
+
+#### 2. Visualize specific gene expression patterns between B6 and SAP Ko cells
+
+##### Seaurat default featureplot
+```{r}
+# For B6 (wild type) only
+Idents(data_clust) <- "hash.type"
+data.subset.B6 <- subset(data_clust, idents = "B6")
+
+DefaultAssay(data.subset.B6)  <- "SCT"
+f1 <- FeaturePlot(data.subset.B6, features = c("Il17a", "Il17f", "Ifng", "Il4", "Slamf1"), pt.size = 1.0, min.cutoff = "q1", max.cutoff = "q99", ncol=1, order = TRUE)
+
+f2 <- FeaturePlot(data.subset.B6, features = c("Slamf6", "Slamf7", "Rorc", "Blk", "Maf"), pt.size = 1.0, min.cutoff = "q1", max.cutoff = "q99", ncol=1, order = TRUE)
+
+f3 <- FeaturePlot(data.subset.B6, features = c("Tbx21", "Etv5", "S1pr1","Klf2", "Zbtb16"), pt.size = 1.0, min.cutoff = "q1", max.cutoff = "q99", ncol=1, order = TRUE)
+
+
+f4 <- FeaturePlot(data.subset.B6, features = c("Cd5", "Icos","Nr4a1", "Gzma","Cd4"), pt.size = 1.0, min.cutoff = "q1", max.cutoff = "q99", ncol=1, order = TRUE)
+
+f5 <- FeaturePlot(data.subset.B6, features = c("Cd8b1", "Rag1","Ptcra", "Dgkeos", "Sox13"), pt.size = 1.0, min.cutoff = "q1", max.cutoff = "q99", ncol=1, order = TRUE)
+
+f6 <- FeaturePlot(data.subset.B6, features = c("Sh2d1a", "Hivep3","Klrb1c", "Il2rb", "Cd244a"), pt.size = 1.0, min.cutoff = "q1", max.cutoff = "q99", ncol=1, order = TRUE)
+
+f7 <- FeaturePlot(data.subset.B6, features = c("Cd200", "Izumo1r","Il2ra", "Cd44", "Cd28"), pt.size = 1.0, min.cutoff = "q1", max.cutoff = "q99", ncol=1, order = TRUE)
+
+
+figure.B6 <- ggarrange(f1, f2, f3, f4, f5, f6, f7,
+                    ncol = 7)
+figure.B6
+ggsave(figure.B6, path = "Figs", filename = "Featureplot_B6.png",  height=15, width=30, units='in', dpi = 300, bg = "transparent", device='png')
+#ggsave(figure.B6, path = "Figs", filename = "Featureplot_B6.svg",  height=15, width=30, units='in', dpi = 300, bg = "transparent", device='svg')
+
+
+# For SAP KO only
+Idents(data_clust) <- "hash.type"
+data.subset.SAP <- subset(data_clust, idents = "SAP")
+
+DefaultAssay(data.subset.SAP)  <- "SCT"
+f1 <- FeaturePlot(data.subset.SAP, features = c("Il17a", "Il17f", "Ifng", "Il4", "Slamf1"), pt.size = 1.0, min.cutoff = "q1", max.cutoff = "q99", ncol=1, order = TRUE)
+
+f2 <- FeaturePlot(data.subset.SAP, features = c("Slamf6", "Slamf7", "Rorc", "Blk", "Maf"), pt.size = 1.0, min.cutoff = "q1", max.cutoff = "q99", ncol=1, order = TRUE)
+
+f3 <- FeaturePlot(data.subset.SAP, features = c("Tbx21", "Etv5", "S1pr1","Klf2", "Zbtb16"), pt.size = 1.0, min.cutoff = "q1", max.cutoff = "q99", ncol=1, order = TRUE)
+
+
+f4 <- FeaturePlot(data.subset.SAP, features = c("Cd5", "Icos","Nr4a1", "Gzma","Cd4"), pt.size = 1.0, min.cutoff = "q1", max.cutoff = "q99", ncol=1, order = TRUE)
+
+f5 <- FeaturePlot(data.subset.SAP, features = c("Cd8b1", "Rag1","Ptcra", "Dgkeos", "Sox13"), pt.size = 1.0, min.cutoff = "q1", max.cutoff = "q99", ncol=1, order = TRUE)
+
+f6 <- FeaturePlot(data.subset.SAP, features = c("Sh2d1a", "Hivep3","Klrb1c", "Il2rb", "Cd244a"), pt.size = 1.0, min.cutoff = "q1", max.cutoff = "q99", ncol=1, order = TRUE)
+
+f7 <- FeaturePlot(data.subset.SAP, features = c("Cd200", "Izumo1r","Il2ra", "Cd44", "Cd28"), pt.size = 1.0, min.cutoff = "q1", max.cutoff = "q99", ncol=1, order = TRUE)
+
+figure.SAP <- ggarrange(f1, f2, f3, f4, f5, f6, f7,
+                    ncol = 7)
+figure.SAP
+ggsave(figure.SAP, path = "Figs", filename = "Featureplot_SAP.png",  height=15, width=30, units='in', dpi = 300, bg = "transparent", device='png')
+#ggsave(figure.SAP, path = "Figs", filename = "Featureplot_SAP.svg",  height=15, width=30, units='in', dpi = 300, bg = "transparent", device='svg')
+
+```
+
+
+##### Featureplot using scCustomize package
+```{r}
+data_clust <- readRDS("data_clust_cc_stress_regressed.rds")
+
+# For B6
+Idents(data_clust) <- "hash.type"
+data.subset.B6 <- subset(data_clust, idents = "B6")
+
+DefaultAssay(data.subset.B6)  <- "RNA"
+f1 <- FeaturePlot_scCustom(data.subset.B6, colors_use = viridis_plasma_dark_high, features = "Il17f", alpha_exp = 0.75, pt.size = 1) #alpha_exp = 0.75
+
+f2 <- FeaturePlot_scCustom(data.subset.B6, colors_use = viridis_plasma_dark_high, features = "Ifng", alpha_exp = 0.75, pt.size = 1) #alpha_exp = 0.75
+
+f3 <- FeaturePlot_scCustom(data.subset.B6, colors_use = viridis_plasma_dark_high, features = "Il4", alpha_exp = 0.75, pt.size = 1) #alpha_exp = 0.75
+
+f4 <- FeaturePlot_scCustom(data.subset.B6, colors_use = viridis_plasma_dark_high, features = "Slamf7", alpha_exp = 0.75, pt.size = 1) #alpha_exp = 0.75
+
+f5 <- FeaturePlot_scCustom(data.subset.B6, colors_use = viridis_plasma_dark_high, features = "Tbx21", alpha_exp = 0.75, pt.size = 1) #alpha_exp = 0.75
+
+f6 <- FeaturePlot_scCustom(data.subset.B6, colors_use = viridis_plasma_dark_high, features = "Zbtb16", alpha_exp = 0.75, pt.size = 1) #alpha_exp = 0.75
+
+
+figure.B6 <- ggarrange(f1, f2, f3, f4, f5, f6,
+                    ncol = 3, nrow = 2)
+figure.B6
+ggsave(figure.B6, path = "Figs", filename = "Featureplot_B6_scCustomize.png",  height=8, width=14, units='in', dpi = 300, bg = "transparent", device='png')
+#ggsave(figure.B6, path = "Figs", filename = "Featureplot_B6_scCustomize.svg",  height=8, width=14, units='in', dpi = 300, bg = "transparent", device='svg')
+
+```
+
+#### 4. Violinplots
+##### Violinplot of each individual genes accross all the clusters
+```{r}
+# For B6
+Idents(data_clust) <- "hash.type"
+data.subset.B6 <- subset(data_clust, idents = c("B6"))
+
+data.subset.B6$seurat_clusters <- factor(x = data.subset.B6$seurat_clusters, levels = c("8","10","1","2","7","5","6","4","3","9","0"))
+
+DefaultAssay(data.subset.B6)  <- "RNA"
+Idents(data.subset.B6) <- "seurat_clusters"
+
+f4 <- VlnPlot(data.subset.B6, features = "Blk", sort = FALSE, log = FALSE)+ NoLegend()
+
+f5 <- VlnPlot(data.subset.B6, features = "Maf", sort = FALSE, log = FALSE)+ NoLegend()
+
+f6 <- VlnPlot(data.subset.B6, features = "Rorc", sort = FALSE, log = FALSE)+ NoLegend()
+
+f11 <- VlnPlot(data.subset.B6, features = "Rag1", sort = FALSE, log = FALSE)+ NoLegend()
+
+f13 <- VlnPlot(data.subset.B6, features = "Ptcra", sort = FALSE, log = FALSE)+ NoLegend()
+
+f14 <- VlnPlot(data.subset.B6, features = "Cd8b1", sort = FALSE, log = FALSE)+ NoLegend()
+
+
+
+figure.B6 <- ggarrange(f4, f11, f5, f13, f6, f14,
+                    ncol = 2, nrow = 3)
+figure.B6
+ggsave(figure.B6, path = "Figs", filename = "vlnplot_B6.png",  height=7, width=8, units='in', dpi = 300, bg = "transparent", device='png')
+# ggsave(figure.B6, path = "Figs", filename = "vlnplot_B6.svg",  height=7, width=8, units='in', dpi = 300, bg = "transparent", device='svg')
+
+```
+
+#### violinplot showcasing both B6 and SAP KO expression levels
+```{r}
+# For B6 vs SAP
+Idents(data_clust) <- "hash.type"
+data_clust$hash.type <- factor(x = data_clust$hash.type, levels = c("B6","SAP"))
+
+data_clust$seurat_clusters <- factor(x = data_clust$seurat_clusters, levels = c("8","10","1","2","7","5","6","4","3","9","0"))
+
+DefaultAssay(data_clust)  <- "RNA"
+Idents(data_clust) <- "seurat_clusters"
+
+gene_list_plot1 <- c("Blk","Maf","Rorc")
+gene_list_plot2 <- c("Etv5","Ccr2","Cpa3")
+gene_list_plot3 <- c("Sox13","Tox2","Pdcd1")
+colors_list <- c("gray","red")
+
+# Create Plots
+f1 <- Stacked_VlnPlot(seurat_object = data_clust, features = gene_list_plot1, split.by = "hash.type",x_lab_rotate = FALSE,
+    colors_use = colors_list, plot_legend = TRUE, plot_spacing = 0.15, pt.size = 0.1)
+
+f2 <- Stacked_VlnPlot(seurat_object = data_clust, features = gene_list_plot2, split.by = "hash.type",x_lab_rotate = FALSE,
+    colors_use = colors_list,  plot_legend = TRUE, plot_spacing = 0.15, pt.size = 0.1)
+
+f3 <- Stacked_VlnPlot(seurat_object = data_clust, features = gene_list_plot3, split.by = "hash.type",x_lab_rotate = FALSE,
+    colors_use = colors_list,  plot_legend = TRUE, plot_spacing = 0.15, pt.size = 0.1)
+
+
+
+figure <- ggarrange(f1, f2, f3,
+                    ncol = 3, nrow = 1)
+figure
+ggsave(figure, path = "Figs", filename = "vlnplot_B6vsSAP.png",  height=6, width=18, units='in', dpi = 300, bg = "transparent", device='png')
+#ggsave(figure, path = "Figs", filename = "vlnplot_B6vsSAP.svg",  height=6, width=18, units='in', dpi = 300, bg = "transparent", device='svg')
+```
+
+
+#### 6. Module scoring of specific set of genes 
+```{r Visualize module scores}
+# Define gene lists per cluster
+features1 <- c("Il17a","Il17f","Rorc","Blk","Maf")
+features2 <- c("Ifng","Tbx21","Klrb1c", "Il2rb")
+features3 <- c("Il4","Zbtb16","Icos")
+
+data_clust <- AddModuleScore(data_clust,
+                  features = list(features1),
+                  name="features1_")
+data_clust <- AddModuleScore(data_clust,
+                  features = list(features2),
+                  name="features2_")
+data_clust3 <- AddModuleScore(data_clust,
+                  features = list(features3),
+                  name="features3_")
+
+# Plot scores
+p <- DimPlot(data_clust, reduction = "umap", label = TRUE) + NoLegend()
+
+p1 <-FeaturePlot(data_clust,
+            features = "features1_1", label = FALSE, order = TRUE, min.cutoff = "q1", max.cutoff = "q99") +
+            scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "RdBu")))
+p2 <-FeaturePlot(data_clust,
+            features = "features2_1", label = FALSE, order = TRUE, min.cutoff = "q1", max.cutoff = "q99") +
+            scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "RdBu")))
+p3 <-FeaturePlot(data_clust3,
+            features = "features3_1", label = FALSE, order = TRUE, min.cutoff = "q1", max.cutoff = "q99") +
+            scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "RdBu")))
+
+
+
+figure <- ggarrange(p, p1, p2, p3,
+                    ncol = 2, nrow = 2)
+
+ggsave(figure, path = "Figs", filename = "Module_scoring.png",  height=8, width=12, units='in', dpi = 300, bg = "transparent", device='png')
+ggsave(figure, filename = "Module_scoring.pdf",  height=8, width=12, units='in', dpi = 300, bg = "transparent", device='pdf')
+```
+
+#### 7. Make bubble plot of selected genes accross all the clusters
+```{r}
+# Now select features
+FEATURES <- c("Mki67", "Top2a", "Il2ra",
+              "Pcna","Rag1", "Rag2", "Ptcra","Cd8b1", "Cd4", "Dgkeos",
+              "Cd24a","Cd5","Cd28", "Lef1","Hivep3","Sell", 
+              "Sh2d1a","Slamf6","Cd44","Etv5","Tcf7","Igfbp4","Igf1r","Gzma","Ifngr1","Blk","Sox13",
+              "Sox4","Maf","Rorc","Ccr9","Slamf1",
+              "Ccr6","Il17a","Il17f","Il23r",
+              "Ifng","Tbx21","Slamf7","Il2rb","Cd244a","Gzmb","Klrb1c","Ccl5",
+              "Zbtb16","Icos","Il4",
+              "Cd200","Tnfrsf9","Nr4a1","Ccr7","Ms4a4b","Ms4a6b",
+              "Prkch","Dgka","Klf2","S1pr1"
+              )
+# Set assay to "RNA"
+DefaultAssay(data_clust)  <- "RNA"
+
+Idents(data_clust) <- "seurat_clusters"
+
+p <- DotPlot_scCustom(
+  data_clust,
+  features = FEATURES,
+  colors_use = viridis_plasma_dark_high,
+  remove_axis_titles = TRUE,
+  x_lab_rotate = TRUE,
+  y_lab_rotate = FALSE,
+  facet_label_rotate = FALSE,
+  flip_axes = FALSE
+)
+
+ggsave(p, path = "Figs", filename = "bubble_plot_selected_genes.png",  height=4, width=18, units='in', dpi = 300, bg = "white", device='png')
+#ggsave(p, path = "Figs", filename = "bubble_plot_selected_genes.svg",  height=4, width=18, units='in', dpi = 300, bg = "white", device='svg')
+```
+------End------
