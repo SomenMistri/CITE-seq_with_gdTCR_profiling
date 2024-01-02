@@ -2,7 +2,7 @@
 
 This repository contains an R Notebook (in .rmd format) that guides through Data normalization (integration), clustering and basic visualization in R.
 
-[Access the R Notebook (3_QCfiltering_HTOdemux.Rmd)](/R_notebooks/3_QCfiltering_HTOdemux.Rmd)
+[Access the R Notebook (4_Normalization_clustering_BasicViz.Rmd)](/R_notebooks/4_Normalization_clustering_BasicViz.Rmd)
 
 ### Step 1: Data Loading, Normalization (with/without data integration)
 The first step involves loading the following file: "data_filtered_demux.singlet.rds". It is required that this .rds file is in the current folder with the .rmd file.
