@@ -84,6 +84,7 @@ data_clust <- FindNeighbors(object = data_clust, dims = 1:30)
 data_clust <- FindClusters(object = data_clust, resolution = 1.0)
 
 # Visualize clustered cells
+Idents(object = data_clust) <- "seurat_clusters"
 DimPlot(data_clust, reduction = "umap", label = TRUE) + NoLegend()
 
 # Save the clustered plot
@@ -285,18 +286,13 @@ f5 <- VlnPlot(data.subset.B6, features = "Maf", sort = FALSE, log = FALSE)+ NoLe
 
 f6 <- VlnPlot(data.subset.B6, features = "Rorc", sort = FALSE, log = FALSE)+ NoLegend()
 
-f11 <- VlnPlot(data.subset.B6, features = "Rag1", sort = FALSE, log = FALSE)+ NoLegend()
-
-f13 <- VlnPlot(data.subset.B6, features = "Ptcra", sort = FALSE, log = FALSE)+ NoLegend()
-
-f14 <- VlnPlot(data.subset.B6, features = "Cd8b1", sort = FALSE, log = FALSE)+ NoLegend()
 
 
 
-figure.B6 <- ggarrange(f4, f11, f5, f13, f6, f14,
-                    ncol = 2, nrow = 3)
+figure.B6 <- ggarrange(f4, f11, f5,
+                    ncol = 1, nrow = 3)
 figure.B6
-ggsave(figure.B6, path = "Figs", filename = "vlnplot_B6.png",  height=7, width=8, units='in', dpi = 300, bg = "transparent", device='png')
+ggsave(figure.B6, path = "Figs", filename = "vlnplot_B6.png",  height=7, width=3, units='in', dpi = 300, bg = "transparent", device='png')
 # ggsave(figure.B6, path = "Figs", filename = "vlnplot_B6.svg",  height=7, width=8, units='in', dpi = 300, bg = "transparent", device='svg')
 
 ```
@@ -313,67 +309,52 @@ DefaultAssay(data_clust)  <- "RNA"
 Idents(data_clust) <- "seurat_clusters"
 
 gene_list_plot1 <- c("Blk","Maf","Rorc")
-gene_list_plot2 <- c("Etv5","Ccr2","Cpa3")
-gene_list_plot3 <- c("Sox13","Tox2","Pdcd1")
 colors_list <- c("gray","red")
 
 # Create Plots
 f1 <- Stacked_VlnPlot(seurat_object = data_clust, features = gene_list_plot1, split.by = "hash.type",x_lab_rotate = FALSE,
     colors_use = colors_list, plot_legend = TRUE, plot_spacing = 0.15, pt.size = 0.1)
 
-f2 <- Stacked_VlnPlot(seurat_object = data_clust, features = gene_list_plot2, split.by = "hash.type",x_lab_rotate = FALSE,
-    colors_use = colors_list,  plot_legend = TRUE, plot_spacing = 0.15, pt.size = 0.1)
 
-f3 <- Stacked_VlnPlot(seurat_object = data_clust, features = gene_list_plot3, split.by = "hash.type",x_lab_rotate = FALSE,
-    colors_use = colors_list,  plot_legend = TRUE, plot_spacing = 0.15, pt.size = 0.1)
-
-
-
-figure <- ggarrange(f1, f2, f3,
-                    ncol = 3, nrow = 1)
-figure
-ggsave(figure, path = "Figs", filename = "vlnplot_B6vsSAP.png",  height=6, width=18, units='in', dpi = 300, bg = "transparent", device='png')
-#ggsave(figure, path = "Figs", filename = "vlnplot_B6vsSAP.svg",  height=6, width=18, units='in', dpi = 300, bg = "transparent", device='svg')
+f1
+ggsave(f1, path = "Figs", filename = "vlnplot_B6vsSAP.png",  height=7, width=6, units='in', dpi = 300, bg = "transparent", device='png')
+#ggsave(figure, path = "Figs", filename = "vlnplot_B6vsSAP.svg",  height=7, width=5, units='in', dpi = 300, bg = "transparent", device='svg')
 ```
 
 
 #### 6. Module scoring of specific set of genes 
 ```{r Visualize module scores}
 # Define gene lists per cluster
-features1 <- c("Il17a","Il17f","Rorc","Blk","Maf")
-features2 <- c("Ifng","Tbx21","Klrb1c", "Il2rb")
-features3 <- c("Il4","Zbtb16","Icos")
+IL17 <- c("Il17a","Il17f","Rorc","Blk","Maf")
+IFNg <- c("Ifng","Tbx21","Klrb1c", "Il2rb")
+IL4 <- c("Il4","Zbtb16","Icos")
 
 data_clust <- AddModuleScore(data_clust,
-                  features = list(features1),
-                  name="features1_")
+                  features = list(IL17),
+                  name="IL17_")
 data_clust <- AddModuleScore(data_clust,
-                  features = list(features2),
-                  name="features2_")
-data_clust3 <- AddModuleScore(data_clust,
-                  features = list(features3),
-                  name="features3_")
+                  features = list(IFNg),
+                  name="IFNg_")
+data_clust <- AddModuleScore(data_clust,
+                  features = list(IL4),
+                  name="IL4_")
 
 # Plot scores
-p <- DimPlot(data_clust, reduction = "umap", label = TRUE) + NoLegend()
-
-p1 <-FeaturePlot(data_clust,
-            features = "features1_1", label = FALSE, order = TRUE, min.cutoff = "q1", max.cutoff = "q99") +
-            scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "RdBu")))
-p2 <-FeaturePlot(data_clust,
-            features = "features2_1", label = FALSE, order = TRUE, min.cutoff = "q1", max.cutoff = "q99") +
-            scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "RdBu")))
-p3 <-FeaturePlot(data_clust3,
-            features = "features3_1", label = FALSE, order = TRUE, min.cutoff = "q1", max.cutoff = "q99") +
-            scale_colour_gradientn(colours = rev(brewer.pal(n = 11, name = "RdBu")))
+p <- DimPlot(data_clust, reduction = "umap", label = TRUE, pt.size = 1.5) + NoLegend()
 
 
 
-figure <- ggarrange(p, p1, p2, p3,
+f1 <- FeaturePlot_scCustom(data_clust, colors_use = viridis_plasma_dark_high, features = "IL17_1", alpha_exp = 0.75, pt.size = 1) #alpha_exp = 0.75
+
+f2 <- FeaturePlot_scCustom(data_clust, colors_use = viridis_plasma_dark_high, features = "IFNg_1", alpha_exp = 0.75, pt.size = 1) #alpha_exp = 0.75
+
+f3 <- FeaturePlot_scCustom(data_clust, colors_use = viridis_plasma_dark_high, features = "IL4_1", alpha_exp = 0.75, pt.size = 1) #alpha_exp = 0.75
+
+figure <- ggarrange(p, f1, f2, f3,
                     ncol = 2, nrow = 2)
 
 ggsave(figure, path = "Figs", filename = "Module_scoring.png",  height=8, width=12, units='in', dpi = 300, bg = "transparent", device='png')
-ggsave(figure, filename = "Module_scoring.pdf",  height=8, width=12, units='in', dpi = 300, bg = "transparent", device='pdf')
+#ggsave(figure, filename = "Module_scoring.pdf",  height=8, width=12, units='in', dpi = 300, bg = "transparent", device='pdf')
 ```
 
 #### 7. Make bubble plot of selected genes accross all the clusters

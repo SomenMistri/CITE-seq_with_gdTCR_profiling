@@ -1,0 +1,227 @@
+---
+title: "R Notebook for 6_pseudobulk_DGE_analysis"
+output: html_notebook
+
+---
+
+Some useful links:
+- [hbctraining tutorial](https://github.com/hbctraining/scRNA-seq_online/blob/master/lessons/pseudobulk_DESeq2_scrnaseq.md)
+- [Youtube](https://www.youtube.com/watch?v=04gB2owLKus)
+
+#### Get the input file:
+After the "4_Normalization_clustering_BasicViz" step, there should be a file named "data_clust_cc_stress_regressed.rds". Copy this file to the current folder where you have this .rmd file ("5_cluster_freq_calculation").
+
+#### Load required packages:
+To load the required packages, execute the following code:
+```{r}
+library(Seurat)
+library(tidyverse)
+library(cowplot)
+library(dplyr)
+library(magrittr)
+library(Matrix)
+library(purrr)
+library(reshape2)
+library(S4Vectors)
+library(tibble)
+library(SingleCellExperiment)
+library(pheatmap)
+library(apeglm)
+library(png)
+library(DESeq2)
+library(RColorBrewer)
+```
+Note: If you haven't installed the packages yet, please install them before loading.
+
+#### Step 1: Data Loading and metadata modification
+Read the clustered data by running the following code:
+```{r}
+data <- readRDS("data_clust_cc_stress_regressed.rds")
+
+# Let's take a look at the data to ensure everything looks good
+DimPlot(data, reduction = "umap", label = TRUE) + NoLegend()
+```
+
+Now, reassigning the sample identifiers in Seurat object. The foolowing chunk reassigns identifiers to different sample groups within a Seurat object ('data'). It replaces original identifiers (e.g., 'B6-1', 'SAP-2') with new ones (e.g., 'WT1', 'KO2') to differentiate sample groups. It assumes four samples per group but needs adjustment for a different number of samples.
+
+```{r}
+# Set the identifiers for each sample group in the Seurat object 'data'
+Idents(data) <- "hash.ID"
+# Define the levels for the samples, specifying the groups: 4 B6 samples and 4 SAP KO samples
+levels(data) <- c("B6-1", "B6-2", "B6-3", "B6-4", "SAP-1", "SAP-2", "SAP-3", "SAP-4")
+# Define the current and new hash IDs for the samples
+current.hash.ids = c("B6-1", "B6-2", "B6-3", "B6-4", "SAP-1", "SAP-2", "SAP-3", "SAP-4")
+new.hash.ids = c("WT1", "WT2", "WT3", "WT4", "KO1", "KO2", "KO3", "KO4")
+# Rename the hash IDs in the Seurat object to match the new identifiers
+names(x = new.hash.ids) <- levels(x = data)
+data <- RenameIdents(object = data, new.hash.ids)
+
+# The new hash IDs are now active in 'data'. 
+# Save the new hash IDs as a new column in the metadata under the column name 'sample_ID'
+sample_ID <- data@active.ident
+data <- AddMetaData(data, metadata = sample_ID, col.name = "sample_ID")
+```
+
+#### Step 2: Subsetting specific clusters (if needed)
+This section focuses on selecting specific clusters within the Seurat object (‘data’) for further analysis or visualization purposes. In this step, other clusters can be specified within the ‘subset()’ function to include or exclude additional clusters for analysis. For instance, to encompass all clusters and select all cells, omitting the ‘idents’ argument within the ‘subset()’ function achieves this purpose.
+
+```{r}
+# Setting Default Assay for Seurat Object
+DefaultAssay(data) <- "RNA"
+
+# Identifying and Extracting Specific Clusters
+# Assigning cluster identities to proceed with a subset of clusters for analysis
+# 'data_subset' stores the subset containing clusters "0", "1", "2", "3", "9", and "12"
+Idents(data) <- "seurat_clusters"
+data_subset <- subset(data, idents = c("0","1","2","3","9","12"), invert = FALSE)
+```
+
+#### Step 3: Preparing data and running DESeq2
+##### Aggregate Counts to Sample Level.
+The following code aggregates expression data to the sample level, extracting the count matrix from the aggregated data:
+
+```{r}
+# Set default assay and aggregate expression data
+DefaultAssay(data_subset) <- "RNA"
+cts <- AggregateExpression(data_subset,
+                           group.by = "sample_ID",
+                           assays = "RNA",
+                           slot = "counts",
+                           return.seurat = FALSE)
+
+# Extract the count matrix
+cts <- cts$RNA
+```
+
+##### Extract sample-level metadata
+This part extracts sample-level metadata, assigns a ‘hash.type’ based on the pattern “WT” or “KO” found in the sample IDs
+```{r}
+# Get sample level metadata
+colData <- data.frame(sample.ID = colnames(cts))
+
+colData <- colData %>%
+  mutate(hash.type = ifelse(grepl("WT", sample.ID), "WT", "KO"))
+rownames(colData) <- NULL
+colData <- column_to_rownames(colData, var = "sample.ID")
+```
+
+##### Make DESeq Object and Filter
+The code initializes a DESeq object (‘dds’) from the count matrix and sample metadata, filtering the dataset to retain genes with counts >= 5:
+
+```{r}
+# Initialize DESeq object and filter genes
+dds <- DESeqDataSetFromMatrix(countData = cts,
+                              colData = colData,
+                              design = ~ hash.type)
+
+keep <- rowSums(counts(dds)) >= 5
+dds <- dds[keep,]
+```
+
+
+##### Run DESeq Analysis
+This section performs the DESeq analysis, orders results based on p-values or adjusted p-values, omits NA values, and summarizes significant results:
+```{r}
+# Perform DESeq analysis
+dds <- DESeq(dds)
+
+# Retrieve the names of results
+resultsNames(dds)
+
+# Get results based on the contrast between "KO" and "WT" groups
+res <- results(dds, contrast = c("hash.type", "KO", "WT"))
+
+# Order results by adjusted p-values
+res <- res[order(res$padj),]
+
+# Omit rows with NA values from results
+sigs <- na.omit(res)
+
+# Subset significant results based on adjusted p-values and fold changes
+sigs <- subset(sigs, padj < 0.05 & abs(log2FoldChange) > 0.5)
+
+# Display the first few rows of the results table
+head(res)
+
+# Provide summary statistics for the results table
+summary(res)
+
+# Provide summary statistics for the significant results
+summary(sigs)
+```
+
+#### Step 4: Data visulalization
+##### 1. Plot PCA
+This chunk generates a PCA plot using the variance stabilizing transformation (vst) of the DESeq object. It displays the first two principal components colored by the "hash.type" variable, representing the genotypes ("KO" or "WT").
+```{r }
+# Perform variance stabilizing transformation (faster)
+vsd <- vst(dds, blind = FALSE)  # Apply variance stabilizing transformation to DESeq object
+
+# Generate PCA data
+pcaData <- plotPCA(vsd, intgroup = c("hash.type"), returnData = TRUE)  # Create PCA plot data
+percentVar <- round(100 * attr(pcaData, "percentVar"))  # Calculate percentage variance captured by PC1 and PC2
+
+# Create PCA plot
+ggplot(pcaData, aes(PC1, PC2, color = hash.type)) +  # Specify PC1 and PC2 as axes and color by 'hash.type'
+  geom_point(size = 3) +  # Add points to the plot
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) +  # Label x-axis with PC1 variance
+  ylab(paste0("PC2: ", percentVar[2], "% variance")) +  # Label y-axis with PC2 variance
+  coord_fixed()  # Maintain aspect ratio
+```
+
+##### 2. CSV output
+This section extracts the results table from DESeq2 and saves it as a CSV file named "D9_C0123912_genotype_SAP_vs_B6.csv". Additionally, it generates normalized counts and saves them in another CSV file named "D9_C0123912_dds_normalized_counts.csv".
+```{r}
+# Convert DESeq2 results to a data frame and save as a CSV file
+res_output <- as.data.frame(res) %>%  # Convert DESeq results to a data frame
+    rownames_to_column("gene")  # Rename the row names column as "gene"
+head(res_output)  # Display the first few rows of the DESeq2 results data frame
+write_csv(res_output, "E17_C0123912_KOvsWT.csv")  # Save the DESeq2 results as a CSV file named "E17_C0123912_KOvsWT.csv"
+
+# Obtain normalized counts and save as a CSV file
+norm.counts <- counts(dds, normalized = TRUE)  # Extract normalized counts from DESeq object
+norm.counts <- as.data.frame(norm.counts) %>%  # Convert normalized counts to a data frame
+    rownames_to_column("gene")  # Rename the row names column as "gene"
+write_csv(norm.counts, "E17_C0123912_normalized_counts.csv")  # Save normalized counts as a CSV file named "E17_C0123912_normalized_counts.csv"
+```
+
+##### 3. Enhanced Volcano Plot
+This chunk produces an enhanced volcano plot using the EnhancedVolcano package. It visualizes log2 fold change versus adjusted p-values for differential expression. The plot also saves as both SVG and PNG formats named "E17_C0123912_KOvsWT.svg" and "E17_C0123912_KOvsWT.png", respectively.
+```{r}
+# Generate an enhanced volcano plot showing gene labels for specific genes
+EnhancedVolcano(
+    res_output, 
+    lab = res_output$gene, 
+    x = 'log2FoldChange', 
+    y = 'padj', 
+    selectLab = c('Blk', 'Rorc', "Maf", "Sh2d1a", "Sox13", "Zbtb16", "Gclm", "Birc5", "Ldha", "Pkm", "Ncl", "Cd8a", "Rasgrp1", "Nrip1", "Txnip", "Slc9a9"), # Omit this line if you want to display random DEGs in the plot.
+    xlab = bquote(~Log[2]~ "fold change"), 
+    ylab = bquote(~-Log[10]~adjusted~italic(P)), 
+    title = "Day_D9_vs_E17", 
+    pCutoff = 0.0001, 
+    FCcutoff = 0.5, 
+    pointSize = 5.0, 
+    labSize = 8.0, 
+    colAlpha = 1, 
+    legendLabels = c('Not sig.', 'Log (base 2) FC', 'Adjusted p-value', 'Adjusted p-value & Log (base 2) FC'), 
+    legendPosition = 'bottom', 
+    legendLabSize = 18, 
+    legendIconSize = 9.0, 
+    drawConnectors = TRUE, 
+    widthConnectors = 0.75, 
+    colConnectors = 'black', 
+    typeConnectors = "open", 
+    endsConnectors = "last"
+)
+
+# Save the generated volcano plot as SVG file
+ggsave("E17_C0123912_KOvsWT.svg", height = 12, width = 16, units = 'in', dpi = 300, device = 'svg')
+
+# Save the generated volcano plot as PNG file
+ggsave("E17_C0123912_KOvsWT.png", height = 12, width = 16, units = 'in', dpi = 300, device = 'png')
+```
+
+------End------
+
+
+

@@ -1,0 +1,157 @@
+---
+title: "R Notebook - 5_cluster_freq_calculation"
+output: html_notebook
+---
+
+Some useful links:
+- [PBMC3k Tutorial](https://satijalab.org/seurat/articles/pbmc3k_tutorial.html)
+- [Merge Vignette](https://satijalab.org/seurat/articles/merge_vignette.html)
+- [Integration Introduction](https://satijalab.org/seurat/articles/integration_introduction.html)
+- [sctransform Vignette](https://satijalab.org/seurat/articles/sctransform_vignette.html)
+
+#### Get the input file:
+After the "4_Normalization_clustering_BasicViz" step, there should be a file named "data_clust_cc_stress_regressed.rds". Copy this file to the current folder where you have this .rmd file ("5_cluster_freq_calculation").
+
+#### Load required packages:
+To load the required packages, execute the following code:
+
+```{r}
+library(Seurat)
+library(tidyverse)
+library(Matrix)
+library(RCurl)
+library(scales)
+library(sctransform)
+library(ggpubr)
+library(RColorBrewer)
+library(openxlsx)
+```
+
+Note: If you haven't installed the packages yet, please install them before loading.
+
+#### Step 1: Data Loading and Variable Definition:
+Read the clustered data by running the following code:
+```{r}
+data_clust <- readRDS("data_clust_cc_stress_regressed.rds")
+
+# Let's take a look at the data to ensure everything looks good
+DimPlot(data_clust, reduction = "umap", label = TRUE) + NoLegend()
+```
+
+In this section, variables are declared to generate the final file name automatically. These variables serve to maintain a record of the specific datasets used in the analysis, reducing confusion.
+
+```{r}
+organ.title <- "E17"  # 'organ.title' represents the identifier for the specific organ or sample used in the analysis, set as "E17".
+
+REGRESSION <- "cc_stress_regressed"  # 'REGRESSION' signifies the type of regression analysis applied, designated as "cc_stress_regressed".
+
+DIMS.TITLE <- "Dim25"  # 'DIMS.TITLE' denotes the dimensionality or specific aspect of the dataset considered, labeled as "Dim25".
+
+RES.TITLE <- "Res1.2"  # 'RES.TITLE' stands for a particular result or variation, identified as "Res1.2".
+#################################################
+```
+
+
+#### Step 2: Cluster Frequency Calculation
+Make CSV file containing frequency calculation of cell numbers of each cluster in both B6 and SAP KO samples. This section of the script specifically deals with analyzing four B6 and four SAP KO samples. It's crucial to adjust the script if the number of samples per group changes. The primary objective is to create a CSV file whose name will be determined by the variables set in Step 1.
+
+```{r}
+#create a data.frame
+data.df <- as.data.frame(data_clust@meta.data)
+
+#Now group based on seurat_clusters of B6
+data.group <- data.df%>%                   
+  group_by(.dots=c("hash.ID","seurat_clusters")) %>%        
+  summarise(count = n())
+
+#identify all the clusters
+data.group.all <- data.df%>%                   
+  group_by(.dots=c("seurat_clusters")) %>%        
+  summarise(count = n())
+
+#Calculate total number or B6 and SAP KO cells
+sum_B61 <- with(data.group, sum(count[hash.ID == 'B6-1']))
+sum_B62 <- with(data.group, sum(count[hash.ID == 'B6-2']))
+sum_B63 <- with(data.group, sum(count[hash.ID == 'B6-3']))
+sum_B64 <- with(data.group, sum(count[hash.ID == 'B6-4']))
+
+sum_SAP1 <- with(data.group, sum(count[hash.ID == 'SAP-1']))
+sum_SAP2 <- with(data.group, sum(count[hash.ID == 'SAP-2']))
+sum_SAP3 <- with(data.group, sum(count[hash.ID == 'SAP-3']))
+sum_SAP4 <- with(data.group, sum(count[hash.ID == 'SAP-4']))
+
+
+#Separate individual B6 and SAP KO rows
+data.group.B61 <- data.group[data.group$hash.ID == 'B6-1',]
+data.group.B62 <- data.group[data.group$hash.ID == 'B6-2',]
+data.group.B63 <- data.group[data.group$hash.ID == 'B6-3',]
+data.group.B64 <- data.group[data.group$hash.ID == 'B6-4',]
+data.group.SAP1 <- data.group[data.group$hash.ID == 'SAP-1',]
+data.group.SAP2 <- data.group[data.group$hash.ID == 'SAP-2',]
+data.group.SAP3 <- data.group[data.group$hash.ID == 'SAP-3',]
+data.group.SAP4 <- data.group[data.group$hash.ID == 'SAP-4',]
+
+
+#Now calculate frequency of cells in each cluster
+x0 <- data.group.all%>%
+  select(seurat_clusters)
+
+x1 <- data.group.B61%>%
+  mutate(freq.WT1 = count/sum_B61) %>%
+  ungroup() %>%
+  select(seurat_clusters, freq.WT1)
+
+x2 <- data.group.B62%>%
+  mutate(freq.WT2 = count/sum_B62) %>%
+  ungroup() %>%
+  select(seurat_clusters, freq.WT2)
+
+x3 <- data.group.B63%>%
+  mutate(freq.WT3 = count/sum_B63)%>%
+  ungroup() %>%
+  select(seurat_clusters, freq.WT3)
+
+x4 <- data.group.B64%>%
+  mutate(freq.WT4 = count/sum_B64)%>%
+  ungroup() %>%
+  select(seurat_clusters, freq.WT4)
+
+
+y1 <- data.group.SAP1%>%
+  mutate(freq.KO1 = count/sum_SAP1)%>%
+  ungroup() %>%
+  select(seurat_clusters, freq.KO1)
+
+y2 <- data.group.SAP2%>%
+  mutate(freq.KO2 = count/sum_SAP2)%>%
+  ungroup() %>%
+  select(seurat_clusters, freq.KO2)
+
+y3 <- data.group.SAP3%>%
+  mutate(freq.KO3 = count/sum_SAP3)%>%
+  ungroup() %>%
+  select(seurat_clusters, freq.KO3)
+
+y4 <- data.group.SAP4%>%
+  mutate(freq.KO4 = count/sum_SAP4)%>%
+  ungroup() %>%
+  select(seurat_clusters, freq.KO4)
+
+#Left join the calculated frequencies
+data.joined <- left_join(x0, x1, by=c('seurat_clusters'='seurat_clusters'))
+data.joined <- left_join(data.joined, x2, by=c('seurat_clusters'='seurat_clusters'))
+data.joined <- left_join(data.joined, x3, by=c('seurat_clusters'='seurat_clusters'))
+data.joined <- left_join(data.joined, x4, by=c('seurat_clusters'='seurat_clusters'))
+data.joined <- left_join(data.joined, y1, by=c('seurat_clusters'='seurat_clusters'))
+data.joined <- left_join(data.joined, y2, by=c('seurat_clusters'='seurat_clusters'))
+data.joined <- left_join(data.joined, y3, by=c('seurat_clusters'='seurat_clusters'))
+data.joined <- left_join(data.joined, y4, by=c('seurat_clusters'='seurat_clusters'))
+
+# Write the results to a CSV file with a determined name based on Step 1 variables
+write.csv(data.joined, paste0(organ.title,"-",REGRESSION,"-",DIMS.TITLE,"-",RES.TITLE,"-","cluster_freq",".csv", sep = ""), row.names=FALSE)
+```
+
+#### Step 3: Data Visualization and Analysis in Graphpad Prism
+The data exported to the generated CSV file can be easily imported into GraphPad Prism. Utilize this data in Prism to generate bar plots illustrating cell cluster frequencies and conduct statistical analyses such as t-tests, ANOVA, or other relevant tests to evaluate differences between B6 and SAP KO samples.
+
+------End------

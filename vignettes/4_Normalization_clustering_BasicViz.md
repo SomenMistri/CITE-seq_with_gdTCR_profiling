@@ -36,13 +36,13 @@ Perform PCA, RunUMAP, FindNeighbors, and FindClusters on the normalized dataset.
 
 - **4. Module Scoring:** Visualize module scores of specific gene sets across clusters.
 <p align="center">
-<img src="../figs/5_Module_scoring.png" alt="5_Module_scoring" width="800"/>
+<img src="../figs/4_Module_scoring.png" alt="4_Module_scoring" width="800"/>
 </p>
 
 - **5. Bubble plots:** Visualize bubble plots specific gene sets across clusters.
 
 <p align="center">
-<img src="../figs/5_bubble_plot_selected_genes.png" alt="5_bubble_plot_selected_genes" width="1000"/>
+<img src="../figs/4_bubble_plot_selected_genes.png" alt="4_bubble_plot_selected_genes" width="1000"/>
 </p>
 
 For detailed code chunks and explanations, refer to the original R Notebook file.
