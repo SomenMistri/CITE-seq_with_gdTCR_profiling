@@ -1,0 +1,100 @@
+---
+title: "R Notebook for 6_ADT_protein_visualization"
+output: html_notebook
+---
+#### Get the input file:
+After the "4_Normalization_clustering_BasicViz" step, there should be a file named "data_clust_cc_stress_regressed.rds". Copy this file to the current folder where you have this .rmd file ("5_cluster_freq_calculation").
+
+#### Load required packages:
+To load the required packages, execute the following code:
+```{r Load Libraries}
+library(Seurat)
+library(ggplot2)
+library(sctransform)
+library(tibble)
+library(dplyr)
+library(patchwork)
+library(ggrepel)
+library(colorspace)
+library(ggpubr)
+library(tidyverse)
+library(viridis)
+library(Seurat)
+library(scCustomize)
+library(qs)
+```
+Note: If you haven't installed the packages yet, please install them before loading.
+
+#### Step 1: Data Loading
+Read the clustered data by running the following code:
+```{r read data}
+
+data_clust <- readRDS ("data_clust_cc_stress_regressed.rds")
+
+# Let's take a look at the data to ensure everything looks good
+DimPlot(data_clust, reduction = "umap", label = TRUE) + NoLegend()
+```
+
+#### Step 2: Normalizationa and optional data subsetting
+In this step, we focus on preparing the cell surface protein (Antibody Derived Tags - ADT) data for analysis. The process involves applying the centered log-ratio (CLR) normalization method followed by scaling to ensure the data is appropriately standardized.
+
+```{r }
+data_clust <- NormalizeData(data_clust, assay = "ADT", normalization.method = "CLR")
+data_clust <- ScaleData(data_clust, assay = "ADT")
+```
+
+This step involves subsetting the dataset to include either Wild-Type (WT) cells labeled as 'B6' or Knockout (KO) cells labeled as 'SAP', providing the flexibility to analyze specific cell types.
+```{r}
+Idents(data_clust) <- "hash.type"
+data_subset <- subset(data_clust, idents = "B6") # or subset SAP KO cells
+```
+
+#### Step 2: Visualization
+##### 1. Violin plot
+This step involves creating violin plots for the visualization of Antibody Derived Tags (ADT) expression within the subset of cells. The plots display the distribution of protein expression levels for specific ADT markers accross all the clusters (specified using the "Idents" argument). Idents The ggarrange function combines the individual violin plots into a single figure 'figure.B6', organized in a 4x2 grid.
+
+```{r}
+Idents(data_subset) <- "seurat_clusters"
+p1 <- VlnPlot(data_subset, features = "adt_CD24", sort = FALSE, log = TRUE)
+p2 <- VlnPlot(data_subset, features = "adt_CD44", sort = FALSE, log = FALSE )
+p3 <-VlnPlot(data_subset, features = "adt_SLAMF1", sort = FALSE, log = TRUE)
+p4 <-VlnPlot(data_subset, features = "adt_Vg1", sort = FALSE, log = TRUE)
+p5 <- VlnPlot(data_subset, features = "adt_CD73", sort = FALSE, log = TRUE)
+p6 <- VlnPlot(data_subset, features = "adt_CD45RB", sort = FALSE, log = TRUE)
+p7 <- VlnPlot(data_subset, features = "adt_SLAMF6", sort = FALSE, log = TRUE)
+p8 <- VlnPlot(data_subset, features = "adt_Vg4", sort = FALSE, log = TRUE)
+
+figure.B6 <- ggarrange(p1, p2, p3, p4, p5, p6, p7, p8,
+                    ncol = 4, nrow = 2)
+
+figure.B6
+ggsave(figure.B6, path = "Figs", filename = "B6_ADT_vlnplot.png",  height=8, width=18, units='in', dpi = 300, bg = "transparent", device='png')
+# ggsave(figure.B6, path = "Figs", filename = "B6_ADT_vlnplot.svg",  height=6, width=14, units='in', dpi = 300, bg = "transparent", device='svg')
+
+# Optionally, uncomment the line starting with 'ggsave' to save the figure as an SVG file by removing the '#' at the beginning.
+```
+
+##### 2. Feature plot
+The following R script generates feature plots to analyze the expression patterns of specific markers within the ‘ADT’ (Antibody Derived Tags) data subset. The FeaturePlot function from scCustomize package is used to create individual plots for markers. These plots utilize the ‘viridis_dark_high’ color palette. The ggarrange function arranges these individual feature plots into a single composite figure labeled ‘figure’, organized in a 4x2 grid layout for ease of comparison across markers.
+
+```{r}
+DefaultAssay(data_subset)  <- "ADT"
+p1 <- FeaturePlot_scCustom(data_subset, colors_use = viridis_dark_high, features = "CD24", alpha_exp = 0.75, pt.size = 1)
+p2 <- FeaturePlot_scCustom(data_subset, colors_use = viridis_dark_high, features = "CD44", alpha_exp = 0.75, pt.size = 1)
+p3 <- FeaturePlot_scCustom(data_subset, colors_use = viridis_dark_high, features = "SLAMF1", alpha_exp = 0.75, pt.size = 1)
+p4 <- FeaturePlot_scCustom(data_subset, colors_use = viridis_dark_high, features = "Vg1", alpha_exp = 0.75, pt.size = 1)
+p5 <- FeaturePlot_scCustom(data_subset, colors_use = viridis_dark_high, features = "CD73", alpha_exp = 0.75, pt.size = 1)
+p6 <- FeaturePlot_scCustom(data_subset, colors_use = viridis_dark_high, features = "CD45RB", alpha_exp = 0.75, pt.size = 1)
+p7 <- FeaturePlot_scCustom(data_subset, colors_use = viridis_dark_high, features = "SLAMF6", alpha_exp = 0.75, pt.size = 1)
+p8 <- FeaturePlot_scCustom(data_subset, colors_use = viridis_dark_high, features = "Vg4", alpha_exp = 0.75, pt.size = 1)
+
+figure <- ggarrange(p1, p2, p3, p4, p5, p6, p7, p8,
+                    ncol = 4, nrow = 2)
+ggsave(figure, path = "Figs", filename = "B6_ADT_scCustom_dark_high.png",  height=8, width=18, units='in', dpi = 300, bg = "transparent", device='png')
+
+# ggsave(figure.B6, path = "Figs", filename = "B6_ADT_scCustom_dark_high.svg",  height=8, width=18, units='in', dpi = 300, bg = "transparent", device='svg')
+# Optionally, uncomment the line starting with 'ggsave' to save the figure as an SVG file by removing the '#' at the beginning.
+```
+
+
+
