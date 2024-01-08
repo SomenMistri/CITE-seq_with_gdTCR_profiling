@@ -1,0 +1,227 @@
+---
+title: "R Notebook on 8.1_TRGV_TRDV_usage"
+output: html_notebook
+---
+#### Get the input file:
+After the "4_Normalization_clustering_BasicViz" step, there should be a file named "data_clust_cc_stress_regressed.rds". Copy this file to the current folder where you have this .rmd file ("5_cluster_freq_calculation").
+
+#### Load required packages:
+To load the required packages, execute the following code:
+```{r}
+#Load libraries
+library(Seurat)
+library(ggplot2)
+library(readxl)
+library(tibble)
+library(dplyr)
+library(patchwork)
+library(ggrepel)
+library(RColorBrewer)
+library(tidyr)
+library(ggpubr)
+```
+Note: If you haven't installed the packages yet, please install them before loading.
+
+#### Step 1: Data Loading and Variable Definition:
+Read the clustered data by running the following code:
+```{r}
+data_clust <- readRDS("data_clust_cc_stress_regressed.rds")
+
+# Let's take a look at the data to ensure everything looks good
+DimPlot(data_clust, reduction = "umap", label = TRUE) + NoLegend()
+```
+
+In this section, variables are declared to subset specific cell types or specific clusters. Also, the variables are used to generate the final file name automatically. 
+```{r}
+organ.id <- "E17"  # 'organ.id' represents the identifier for the specific organ or sample used in the analysis, set as "E17".
+
+# Arrays specifying all available cell types and clusters for subsequent analysis and naming conventions
+hash.all <- c("B6","SAP")
+cluster.all <- c("0","1","2","3","4","5","6","7","8","9","10") # depends on the total number of clusters
+
+# Define the specific 'hash.type' to analyze, either "B6" or "SAP" or use the complete 'hash.all'. Adjust 'HASHTYPE.TITLE' accordingly.
+HASHTYPE <- c("B6")
+HASHTYPE.TITLE <- "B6"
+
+# Define the specific clusters to analyze, either "0" or a specific set or use all available clusters 'cluster.all'. Adjust 'SEURAT_CLUSTERS.TITLE' accordingly.
+SEURAT_CLUSTERS <- cluster.all #Default = cluster.all
+SEURAT_CLUSTERS.TITLE <- "Cluster.all"
+```
+
+#### Step 2: TRGV (γ chain) usage visualization
+This section focuses on exploring the distribution and expression patterns of TRGV (T Cell Receptor gamma Variable) genes within the scRNA-seq data. The dataset is filtered to specific cell types and clusters. UMAP (Uniform Manifold Approximation and Projection) plots are generated for individual TRDV genes across identified clusters, enabling a comparative analysis of their expression profiles. The combined output provides insights into differential TRDV gene usage across clusters, enhancing our understanding of T cell receptor dynamics.
+
+```{r}
+# Subset the data based on predefined variables to focus on specific cell types and clusters.Set up the Seurat object's identifiers for 'hash.type' and 'seurat_clusters'.
+Idents(data_clust) <- "hash.type"
+data.subset <- subset(data_clust, idents = HASHTYPE)
+Idents(data.subset) <- "seurat_clusters"
+data.subset <- subset(data.subset, idents = SEURAT_CLUSTERS)
+
+# Set specific levels for the 'v_gene_g' variable
+# Note: please make sure that the "v_gene_g" metadata column is formatted correctly complimenting the naming nomenclature used here 
+data.subset$v_gene_g <- factor(data.subset$v_gene_g, levels = c("TRGV1","TRGV2","TRGV3","TRGV4","TRGV5","TRGV6","TRGV7","NA"))
+
+# Set identifiers for 'v_gene_g' and extract the levels.
+Idents(data.subset) <- "v_gene_g"
+levels(data.subset@active.ident)
+
+# Store chain names as a variable for iteration.
+chain_names <- levels(data.subset@active.ident)
+
+# Create an empty list to store the generated plots.
+plot_list <- list()
+
+# Iterate through chain names to generate individual plots.
+for (i in seq_along(chain_names)) {
+  new.ids <- rep("Others", length(chain_names))
+  new.ids[i] <- chain_names[i]
+  
+  names(new.ids) <- levels(data.subset)
+  data.subset2 <- RenameIdents(data.subset, new.ids)
+  
+  plot <- DimPlot(data.subset2, reduction = "umap", cols = c("grey", "blue"), label = FALSE, pt.size = 1, order = c(chain_names[i], "Others")) + ggtitle(chain_names[i]) + NoLegend()
+  plot_list[[i]] <- plot
+}
+
+# Display the generated plots.
+for (i in seq_along(chain_names)) {
+  print(plot_list[[i]])
+}
+
+# Arrange generated plots and save as a combined figure.
+figure <- ggarrange(plotlist = plot_list,
+                    hjust = -1.8, vjust = 1.1,
+                    ncol = 4, nrow = 2)
+ggsave(figure, path = "Figs", filename = paste(organ.id, "-", "TRGV", "-", HASHTYPE.TITLE, "-", SEURAT_CLUSTERS.TITLE, ".png", sep = ""), height = 7, width = 16, units = 'in', dpi = 300, bg = "transparent", device = 'png')
+
+# Uncomment the line below to save as SVG format.
+# ggsave(figure, path = "Figs", filename = paste(organ.id, "-", "TRDV", "-", HASHTYPE.TITLE, "-", SEURAT_CLUSTERS.TITLE, ".svg", sep = ""), height = 10, width = 16, units = 'in', dpi = 300, bg = "transparent", device = 'svg')
+```
+
+
+#### Step 3: TRDV (δ chain) usage visualization
+This section focuses on exploring the distribution and expression patterns of TRDV (T Cell Receptor Delta Variable) genes within the scRNA-seq data. The dataset is filtered to specific cell types and clusters. UMAP (Uniform Manifold Approximation and Projection) plots are generated for individual TRDV genes across identified clusters, enabling a comparative analysis of their expression profiles. The combined output provides insights into differential TRDV gene usage across clusters, enhancing our understanding of T cell receptor dynamics.
+
+```{r}
+# Subset the data based on predefined variables to focus on specific cell types and clusters.Set up the Seurat object's identifiers for 'hash.type' and 'seurat_clusters'.
+Idents(data_clust) <- "hash.type"
+data.subset <- subset(data_clust, idents = HASHTYPE)
+Idents(data.subset) <- "seurat_clusters"
+data.subset <- subset(data.subset, idents = SEURAT_CLUSTERS)
+
+# Set specific levels for the 'v_gene_d' variable
+# Note: please make sure that the "v_gene_d" metadata column is formatted correctly complimenting the naming nomenclature used here 
+data.subset$v_gene_d <- factor(data.subset$v_gene_d, levels = c("TRDV1", "TRDV2", "TRDV4", "TRDV5", "TRDV6", "TRDV7", "TRDV8", "TRDV9", "TRDV10", "TRDV11", "TRDV12", "TRAV15N-1", "TRAVs", "NA"))
+
+# Set identifiers for 'v_gene_d' and extract the levels.
+Idents(data.subset) <- "v_gene_d"
+levels(data.subset@active.ident)
+
+# Store chain names as a variable for iteration.
+chain_names <- levels(data.subset@active.ident)
+
+# Create an empty list to store the generated plots.
+plot_list <- list()
+
+# Iterate through chain names to generate individual plots.
+for (i in seq_along(chain_names)) {
+  new.ids <- rep("Others", length(chain_names))
+  new.ids[i] <- chain_names[i]
+  
+  names(new.ids) <- levels(data.subset)
+  data.subset2 <- RenameIdents(data.subset, new.ids)
+  
+  plot <- DimPlot(data.subset2, reduction = "umap", cols = c("grey", "blue"), label = FALSE, pt.size = 1, order = c(chain_names[i], "Others")) + ggtitle(chain_names[i]) + NoLegend()
+  plot_list[[i]] <- plot
+}
+
+# Display the generated plots.
+for (i in seq_along(chain_names)) {
+  print(plot_list[[i]])
+}
+
+# Arrange generated plots and save as a combined figure.
+figure <- ggarrange(plotlist = plot_list,
+                    hjust = -1.8, vjust = 1.1,
+                    ncol = 4, nrow = 3)
+ggsave(figure, path = "Figs", filename = paste(organ.id, "-", "TRDV", "-", HASHTYPE.TITLE, "-", SEURAT_CLUSTERS.TITLE, ".png", sep = ""), height = 10, width = 16, units = 'in', dpi = 300, bg = "transparent", device = 'png')
+
+# Uncomment the line below to save as SVG format.
+# ggsave(figure, path = "Figs", filename = paste(organ.id, "-", "TRDV", "-", HASHTYPE.TITLE, "-", SEURAT_CLUSTERS.TITLE, ".svg", sep = ""), height = 10, width = 16, units = 'in', dpi = 300, bg = "transparent", device = 'svg')
+```
+#### Step 4: TRGV and TRDV paired usage using Pheatmap
+This following R script chunk performs various data processing steps and creates a heatmap displaying TRGV and TRDV gene pair usage. Initially, it subsets the dataset based on parameters set previously and removes 'NA' entries from 'v_gene_d' and 'v_gene_g' columns if present. It then establishes levels for these columns, groups unique gene pairs, calculates counts, adds log2 transformed values, fills missing combinations, and summarizes duplicate pairs. The script uses ggplot to generate a heatmap depicting the relationship between 'v_gene_d' and 'v_gene_g' based on log2-transformed counts. The resulting heatmap is saved as a PNG image in the 'Figs' directory for further analysis or visualization.
+
+```{r}
+# Run common script based on parameters set in the previous step and make plots
+# Make specific subset based on the variables set in the previous step
+# table(data$hash.type)
+Idents(data_clust) <- "hash.type"
+data.subset <- subset(data_clust, idents = HASHTYPE)
+Idents(data.subset) <- "seurat_clusters"
+data.subset <- subset(data.subset, idents = SEURAT_CLUSTERS)
+
+# Remove 'NA' from 'v_gene_d' if present
+Idents(data.subset) <- "v_gene_d"
+tryCatch({
+  data.subset <- subset(data.subset, idents = c("NA"), invert = TRUE)
+}, error = function(e) {
+  print("No 'NA' identities found in the dataset.")
+})
+
+# Remove 'NA' from 'v_gene_g' if present
+Idents(data.subset) <- "v_gene_g"
+tryCatch({
+  data.subset <- subset(data.subset, idents = c("NA"), invert = TRUE)
+}, error = function(e) {
+  print("No 'NA' identities found in the dataset.")
+})
+
+# Set up levels for 'v_gene_d' and 'v_gene_g'
+data.subset$v_gene_d <- factor(data.subset$v_gene_d, levels =c("TRDV1","TRDV2","TRDV4","TRDV5","TRDV6","TRDV7","TRDV8","TRDV9","TRDV10","TRDV11","TRDV12","TRAV15N-1","TRAVs"))
+data.subset$v_gene_g <- factor(data.subset$v_gene_g, levels =c("TRGV1","TRGV2","TRGV3", "TRGV4","TRGV5","TRGV6","TRGV7"))
+
+# Extract metadata and perform grouping based on unique 'v_gene_g' and 'v_gene_d' pairings
+data.subset.vdj <- as.data.frame(data.subset@meta.data)
+data_group <- data.subset.vdj %>%
+  group_by(.dots = c("v_gene_g","v_gene_d")) %>%
+  summarise(count = n())
+
+# Add a new column with log2 transformed values and drop the 'count' column
+data_group <- data_group %>%
+  mutate(log2 = log2(count)) %>%
+  select(-c(count))
+
+# Fill in missing combinations for uniformity across TRGV and TRDV combinations
+data_group <- complete(data_group, v_gene_d, fill = list(log2 = 0))
+
+# Summarize duplicates within 'v_gene_g' and 'v_gene_d' pairs
+data_group <- data_group %>%
+  group_by(.dots = c("v_gene_g","v_gene_d","log2")) %>%
+  summarise(dup = n()) %>%
+  select(-c(dup))
+
+# Plot using ggplot's geom_tile function
+ggplot(data_group, aes(v_gene_d, v_gene_g)) +
+  geom_tile(aes(fill = log2), colour = "dark red") +
+  scale_fill_gradient2(high = "firebrick3", low = "#fff5f0") +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    legend.background = element_blank(),
+    axis.ticks=element_blank(),
+    axis.text.x=element_text(colour="black",size=26, angle=90, vjust = 0.5),
+    axis.text.y=element_text(colour="black",size=26),
+    plot.title = element_text(size=26)
+  ) +
+  labs(title = paste(organ.id, "-", HASHTYPE.TITLE, "-", SEURAT_CLUSTERS.TITLE, sep = ""), x="", y="", fill="")
+
+# Save the figure
+ggsave(path = "Figs", filename = paste(organ.id, "-TCR_Heatmap-", HASHTYPE.TITLE, "-", SEURAT_CLUSTERS.TITLE, ".png", sep = ""),
+       height = 7, width = 10, units = 'in', dpi = 300, bg = "transparent", device = 'png')
+# ggsave(path = "Figs", filename = paste(organ.id, "-TCR_Heatmap-", HASHTYPE.TITLE, "-", SEURAT_CLUSTERS.TITLE, ".svg", sep = ""), height = 7, width = 10, units = 'in', dpi = 300, bg = "transparent", device = 'svg')
+```
+
+
