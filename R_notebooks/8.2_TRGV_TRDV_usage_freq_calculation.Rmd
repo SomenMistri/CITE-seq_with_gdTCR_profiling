@@ -1,0 +1,164 @@
+---
+title: "R Notebook on 8.2_TRGV_TRDV_usage_freq_calculation"
+output: html_notebook
+---
+#### Get the input file:
+After the "4_Normalization_clustering_BasicViz" step, there should be a file named "data_clust_cc_stress_regressed.rds". Copy this file to the current folder where you have this .rmd file ("5_cluster_freq_calculation").
+
+#### Load required packages:
+To load the required packages, execute the following code:
+
+```{r}
+library(Seurat)
+library(tidyverse)
+library(Matrix)
+library(RCurl)
+library(scales)
+library(sctransform)
+library(ggpubr)
+library(RColorBrewer)
+library(openxlsx)
+```
+
+Note: If you haven't installed the packages yet, please install them before loading.
+
+#### Step 1: Data Loading and Variable Definition:
+Read the clustered data by running the following code:
+```{r}
+data_clust <- readRDS("data_clust_cc_stress_regressed.rds")
+
+# Let's take a look at the data to ensure everything looks good
+DimPlot(data_clust, reduction = "umap", label = TRUE) + NoLegend()
+```
+
+In this section, variables are declared to subset specific cell types or specific clusters. Also, the variables are used to generate the final file name automatically. 
+```{r}
+# Setting specific identifiers for analysis
+
+# 'organ.id' identifies the specific organ or sample used in the analysis, designated as "E17".
+organ.id <- "E17"  
+
+# Define specific TRGV (γ chain) and TRDV (δ chain) genes for further analysi. 'V_GENE_G' defines the specific TRGV (γ chain) gene as "TRGV4". Set it to "TRGV5" if you want to look into Vγ5 cells. 'V_GENE_G.TITLE' represents the title assigned to the TRGV (γ chain) gene, set as "TRGV4". This is used for automatically naming the final .csv file
+V_GENE_G <- "TRGV4"
+V_GENE_G.TITLE <- "TRGV4"
+
+# 'V_GENE_D' defines the specific TRDV (δ chain) gene as "TRDV7". 'V_GENE_D.TITLE' represents the title assigned to the TRDV (δ chain) gene, designated as "TRDV7". This is used for automatically naming the final .csv file
+V_GENE_D <- "TRDV5"  
+V_GENE_D.TITLE <- "TRDV5"
+```
+
+
+#### Step 2: Cluster Frequency Calculation
+Make CSV file containing frequency calculation of cell numbers of each cluster in specific TRGV/TRDV paired B6 and SAP KO cells. This section of the script specifically deals with analyzing four B6 and four SAP KO samples. It's crucial to adjust the script if the number of samples per group changes. The primary objective is to create a CSV file whose name will be determined by the variables set in Step 1.
+Note: The frequncy calculation is done after subsetting cells with specific TRHV/TRDV pairings.
+
+```{r}
+# Subset cells based on 'v_gene_g' and 'v_gene_d' identifiers
+Idents(data_clust) <- "v_gene_g"
+data.subset <- subset(data_clust, idents = V_GENE_G)
+
+Idents(data.subset) <- "v_gene_d"
+data.subset <- subset(data.subset, idents = V_GENE_D)
+
+# Check for number of cells after subsetting
+table(data.subset$hash.type)
+
+# Create a data.frame from subset's metadata
+data.df <- as.data.frame(data.subset@meta.data)
+
+# Group data by 'hash.ID' and 'seurat_clusters'
+data.group <- data.df %>%
+  group_by(.dots = c("hash.ID", "seurat_clusters")) %>%
+  summarise(count = n())
+
+# Identify all clusters
+data.group.all <- data.df %>%
+  group_by(.dots = c("seurat_clusters")) %>%
+  summarise(count = n())
+
+# Calculate total numbers of B6 and SAP KO cells per cluster
+# Separately compute the sum for each B6 and SAP cluster
+sum_B61 <- with(data.group, sum(count[hash.ID == 'B6-1']))
+sum_B62 <- with(data.group, sum(count[hash.ID == 'B6-2']))
+sum_B63 <- with(data.group, sum(count[hash.ID == 'B6-3']))
+sum_B64 <- with(data.group, sum(count[hash.ID == 'B6-4']))
+
+sum_SAP1 <- with(data.group, sum(count[hash.ID == 'SAP-1']))
+sum_SAP2 <- with(data.group, sum(count[hash.ID == 'SAP-2']))
+sum_SAP3 <- with(data.group, sum(count[hash.ID == 'SAP-3']))
+sum_SAP4 <- with(data.group, sum(count[hash.ID == 'SAP-4']))
+
+
+# Separate B6 and SAP rows for each cluster
+data.group.B61 <- data.group[data.group$hash.ID == 'B6-1',]
+data.group.B62 <- data.group[data.group$hash.ID == 'B6-2',]
+data.group.B63 <- data.group[data.group$hash.ID == 'B6-3',]
+data.group.B64 <- data.group[data.group$hash.ID == 'B6-4',]
+data.group.SAP1 <- data.group[data.group$hash.ID == 'SAP-1',]
+data.group.SAP2 <- data.group[data.group$hash.ID == 'SAP-2',]
+data.group.SAP3 <- data.group[data.group$hash.ID == 'SAP-3',]
+data.group.SAP4 <- data.group[data.group$hash.ID == 'SAP-4',]
+
+
+# Calculate the frequency of cells in each cluster for B6 and SAP
+x0 <- data.group.all%>%
+  select(seurat_clusters)
+
+x1 <- data.group.B61%>%
+  mutate(freq.WT1 = count/sum_B61) %>%
+  ungroup() %>%
+  select(seurat_clusters, freq.WT1)
+
+x2 <- data.group.B62%>%
+  mutate(freq.WT2 = count/sum_B62) %>%
+  ungroup() %>%
+  select(seurat_clusters, freq.WT2)
+
+x3 <- data.group.B63%>%
+  mutate(freq.WT3 = count/sum_B63)%>%
+  ungroup() %>%
+  select(seurat_clusters, freq.WT3)
+
+x4 <- data.group.B64%>%
+  mutate(freq.WT4 = count/sum_B64)%>%
+  ungroup() %>%
+  select(seurat_clusters, freq.WT4)
+
+
+y1 <- data.group.SAP1%>%
+  mutate(freq.KO1 = count/sum_SAP1)%>%
+  ungroup() %>%
+  select(seurat_clusters, freq.KO1)
+
+y2 <- data.group.SAP2%>%
+  mutate(freq.KO2 = count/sum_SAP2)%>%
+  ungroup() %>%
+  select(seurat_clusters, freq.KO2)
+
+y3 <- data.group.SAP3%>%
+  mutate(freq.KO3 = count/sum_SAP3)%>%
+  ungroup() %>%
+  select(seurat_clusters, freq.KO3)
+
+y4 <- data.group.SAP4%>%
+  mutate(freq.KO4 = count/sum_SAP4)%>%
+  ungroup() %>%
+  select(seurat_clusters, freq.KO4)
+
+# Left join all calculated frequencies by cluster
+data.joined <- left_join(x0, x1, by=c('seurat_clusters'='seurat_clusters'))
+data.joined <- left_join(data.joined, x2, by=c('seurat_clusters'='seurat_clusters'))
+data.joined <- left_join(data.joined, x3, by=c('seurat_clusters'='seurat_clusters'))
+data.joined <- left_join(data.joined, x4, by=c('seurat_clusters'='seurat_clusters'))
+data.joined <- left_join(data.joined, y1, by=c('seurat_clusters'='seurat_clusters'))
+data.joined <- left_join(data.joined, y2, by=c('seurat_clusters'='seurat_clusters'))
+data.joined <- left_join(data.joined, y3, by=c('seurat_clusters'='seurat_clusters'))
+data.joined <- left_join(data.joined, y4, by=c('seurat_clusters'='seurat_clusters'))
+
+# Write the resulting joined data to a CSV file with a specific file name based on identifiers
+write.csv(data.joined, paste0(organ.id,"-",V_GENE_G.TITLE,"-",V_GENE_D.TITLE,"-","cluster_freq",".csv", sep = ""), row.names=FALSE)
+```
+
+#### Step 3: Data Visualization and Analysis in Graphpad Prism
+The data exported to the generated CSV file can be easily imported into GraphPad Prism. Utilize this data in Prism to generate bar plots illustrating cell cluster frequencies between WT and KO per TRGV/TRDV pairings specified and conduct statistical analyses such as t-tests, ANOVA, or other relevant tests to evaluate differences between B6 and SAP KO samples.
+------End------

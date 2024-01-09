@@ -32,3 +32,32 @@ Perform comprehensive data processing steps. Remove ‘NA’ entries, group uniq
 <p align="center">
 <img src="../figs/8_TRGV_TRDV_Pheatmap.png" alt="8_TRGV_TRDV_Pheatmap" width="400"/>
 </p>
+
+## R Notebook: 8.2_TRGV_TRDV_usage_freq_calculation:
+
+Click [here](/R_notebooks/8.2_TRGV_TRDV_usage_freq_calculation.Rmd) to access the R notebook. This R script comprises four major steps analyzing T-cell receptor variable gene (TRGV and TRDV) usage patterns in single-cell RNA-seq data:
+
+
+### Step 1: Data Loading and Variable Definition
+The initial step involves loading the clustered Seurat object file named "data_clust_cc_stress_regressed.rds" into the notebook. Ensure this file is in the same folder as the .rmd file.
+
+Variables are defined in this section to specify specific pairings such as TRGV4/TRDV5 or TRGV6/TRDV4. The cluster frequencies are calculated after subsetting the cells using the specific TRGV/TRDV pairings.
+
+### Step 2: Cluster Frequency Calculation
+This section deals specifically with analyzing B6 and SAP KO samples to generate a CSV file. Adjust the script if the number of samples per group changes. The primary objective is to calculate the frequency of cells in each cluster for specific TRGV/TRDV paired B6 and SAP KO cells.
+
+<p align="center">
+<img src="../figs/8_TRGV-TRDV_freq_calculation_csv.png" alt="8_TRGV-TRDV_freq_calculation_csv" width="600"/>
+</p> 
+
+[Download a sample CSV Output File](/miscellaneous/8_TRGV_TRDV_cell_freq_calculation_csv_output.csv)
+
+
+### Step 3: Data Visualization and Analysis in GraphPad Prism
+The generated CSV file can be easily imported into GraphPad Prism. Utilize this data in Prism to create bar plots illustrating cell cluster frequencies and conduct statistical analyses such as t-tests, ANOVA, or other relevant tests to evaluate differences between B6 and SAP KO samples.
+
+<p align="center">
+<img src="../figs/8_TRGV_TRDV_freq_calculation_prism.png" alt="8_TRGV_TRDV_freq_calculation_prism" width="500"/>
+</p>
+
+[Download a sample PRISM File for visualization and analysis](/miscellaneous/8_TRGV_TRDV_cell_freq_calculation_prism.pzfx)
