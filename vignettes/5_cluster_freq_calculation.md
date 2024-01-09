@@ -26,6 +26,6 @@ The generated CSV file can be easily imported into GraphPad Prism. Utilize this 
 <img src="../figs/5_sample_freq_calculation_prism.png" alt="5_sample_freq_calculation_prism" width="600"/>
 </p>
 
-[Download a sample PRISM File for visualization and analysis](/miscellaneous/5_sample_cell_freq_calculation_prism.pzfx.csv)
+[Download a sample PRISM File for visualization and analysis](/miscellaneous/5_sample_cell_freq_calculation_prism.pzfx)
 
 ------End------
