@@ -35,13 +35,21 @@ echo "Symlinking Raw Data"
 ln -s /path/to/original/data/*.fastq.gz ./   # Update to the original data path
 echo -n "Symlinks created in: "; pwd
 
+###########DO NOT RUN in SBATCH ##################
+# Create a Conda environment (For the first time only). Creating a Conda environment is essential for managing dependencies and isolating specific toolsets within projects. It ensures reproducibility by encapsulating packages separately.
+# To create a Conda environment use the following code: conda create --name myenv
+# Replace myenv with your preferred environment name such as "scRNA-seq"
+# Once the environment is created, activate it: conda activate scRNA-seq 
+# To include FastQC and MultiQC, you can install them within the Conda environment. New packages can be added to the same enviroment later using the same code: conda install -c bioconda fastqc multiqc 
+# To list all the packages in a environment, please use: conda list 
+# To exit an environment after installation or use: conda deactivate 
+#############################
+
 # Activate Conda environment
 source /path/to/miniconda3/etc/profile.d/conda.sh   # Update Miniconda path
-conda activate rnaseq_bulk # make a conda environment for this job and use it every time.
+conda activate scRNA-seq # Use a conda environment for this job that has been created already
 
-###################################
 ### FastQC on raw_data###
-
 echo "Running FastQC on raw data..."
 fastqc *.fastq.gz
 echo "FastQC on raw data complete."
