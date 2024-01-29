@@ -1,0 +1,153 @@
+---
+title: "R Notebook on 9.1_clonotype_abundance_list"
+output: html_notebook
+---
+#### Get the input file:
+After the "4_Normalization_clustering_BasicViz" step, there should be a file named "data_clust_cc_stress_regressed.rds". Copy this file to the current folder where you have this .rmd file ("5_cluster_freq_calculation").
+
+#### Load required packages:
+To load the required packages, execute the following code:
+
+```{r}
+library(Seurat)
+library(ggplot2)
+library(readxl)
+library(tibble)
+library(dplyr)
+library(patchwork)
+library(ggrepel)
+library(RColorBrewer)
+library(tidyr)
+library("xlsx")
+```
+
+Note: If you haven't installed the packages yet, please install them before loading.
+
+#### Step 1: Data Loading and Variable Definition:
+Read the clustered data by running the following code:
+
+```{r}
+data_clust <- readRDS("data_clust_cc_stress_regressed.rds")
+
+# Let's take a look at the data to ensure everything looks good
+DimPlot(data_clust, reduction = "umap", label = TRUE) + NoLegend()
+```
+
+In this section, variables are declared to subset specific cell types or specific clusters. Also, the variables are used to generate the final file name automatically. 
+```{r Define variables}
+organ.id <- "E17"  # 'organ.id' represents the identifier for the specific organ or sample used in the analysis, set as "E17".
+
+# Arrays specifying all available cell types and clusters for subsequent analysis and naming conventions
+hash.all <- c("B6","SAP")
+cluster.all <- c("0","1","2","3","4","5","6","7","8","9","10") # depends on the total number of clusters
+
+# Define the specific clusters to analyze, either "0" or a specific set or use all available clusters 'cluster.all'. Adjust 'SEURAT_CLUSTERS.TITLE' accordingly.
+SEURAT_CLUSTERS <- cluster.all #Default = cluster.all
+SEURAT_CLUSTERS.TITLE <- "Clusterall"
+```
+
+#### Step 2: Data subsetting and excel file generation (hashtag separated)
+Subset the data based on predefined variables to focus on specific cell types
+```{r}
+#Removal of "NA" from both gamma and delta chain important for this script to work
+Idents(data_clust) <- "org_v_gene_d" 
+data.subset <- subset(data_clust, idents = "NA", invert=TRUE) # If there is no "NA", there will be an error at this line. To solve it, just make this line a comment using "#"
+
+Idents(data.subset) <- "v_gene_g"
+data.subset <- subset(data.subset, idents = "NA", invert=TRUE) # If there is no "NA", there will be an error at this line. To solve it, just make this line a comment using "#"
+
+Idents(data.subset) <- "cdr3_g"
+data.subset <- subset(data.subset, idents = "NA", invert=TRUE) # If there is no "NA", there will be an error at this line. To solve it, just make this line a comment using "#"
+
+Idents(data.subset) <- "cdr3_d"
+data.subset <- subset(data.subset, idents = "NA", invert=TRUE) # If there is no "NA", there will be an error at this line. To solve it, just make this line a comment using "#"
+
+#Make specific subset based on the variables set in the previous step
+Idents(data.subset) <- "seurat_clusters"
+data.subset <- subset(data.subset, idents = SEURAT_CLUSTERS)
+```
+
+Iterate through hash.type to generate individual lists of clonotypes from both WT and KO cells and make new sheets in the final .xlsx file
+```{r}
+Idents(data.subset) <- "hash.type" # Set identifiers for 'hash.type'
+levels(data.subset@active.ident) # Extract the levels.
+hash_types <- levels(data.subset@active.ident) # Store hash.type  as a variable for iteration.
+for (i in seq_along(hash_types)) {
+  Idents(data.subset) <- "hash.type"
+  data.subset2 <- subset(data.subset, idents = hash_types[i])
+  # convert metadata to data.frame format
+  data.subset.vdj <- as.data.frame(data.subset2@meta.data)
+  
+  #Now group based on Unique CDR3s
+  data_group <- data.subset.vdj%>%                   
+  group_by(v_gene_g, j_gene_g, cdr3_g, cdr3_d, org_v_gene_d, d_gene_d, j_gene_d, seurat_clusters) %>%        
+  summarise(count = n()) %>%
+  arrange(desc(count))
+  # View(data_group)
+  # Now convert "new_clusts" id like this - 7 becomes C7. Then add count of each clonotype in parenthesis - C7(5)
+  data_group_modified <- data_group%>%                   
+  mutate(C = paste("C"))%>%
+  unite(new_clusts_ID, c("C", "seurat_clusters"), sep = "")%>%
+  mutate(new_clusts_count=paste(new_clusts_ID, "(", count,")", sep =""))
+
+  #View(data_group_modified) 
+  #Now merge unique clonotypes from different clusters
+  data_group_final <- data_group_modified%>%                   
+  group_by(v_gene_g, j_gene_g, cdr3_g, cdr3_d, org_v_gene_d, d_gene_d, j_gene_d) %>%        
+  summarise(Count = sum(count), cluster_ID_w_count=paste(new_clusts_count, collapse=","))%>%
+  arrange(desc(Count))%>%
+  mutate(Clonotype=paste0(v_gene_g,"-",cdr3_g,"-",cdr3_d,"-", org_v_gene_d))
+  
+  data_group_final <- data_group_final %>%
+  select(Clonotype, everything())
+  
+  data_group_final <- tibble::rownames_to_column(data_group_final, "Clonotype_ID")
+#View(data_group_final)
+
+write.xlsx(as.data.frame(data_group_final),paste0(organ.id,"-",SEURAT_CLUSTERS.TITLE,"_clonotypes.xlsx", sep = ""), sheetName = hash_types[i], row.names=FALSE, col.names = TRUE, append = TRUE)
+}
+```
+
+Iterate through hash.type to generate individual lists of clonotypes from all the hash.IDs separately and make new sheets in the final appended .xlsx file
+```{r}
+Idents(data.subset) <- "hash.ID" # Set identifiers for 'hash.type'
+levels(data.subset@active.ident) # Extract the levels.
+hash_Ids <- levels(data.subset@active.ident) # Store hash.type  as a variable for iteration.
+for (j in seq_along(hash_Ids)) {
+  Idents(data.subset) <- "hash.ID"
+  data.subset2 <- subset(data.subset, idents = hash_Ids[j])
+  # convert metadata to data.frame format
+  data.subset.vdj <- as.data.frame(data.subset2@meta.data)
+  
+  #Now group based on Unique CDR3s
+  data_group <- data.subset.vdj%>%                   
+  group_by(v_gene_g, j_gene_g, cdr3_g, cdr3_d, org_v_gene_d, d_gene_d, j_gene_d, seurat_clusters) %>%        
+  summarise(count = n()) %>%
+  arrange(desc(count))
+  # View(data_group)
+  # Now convert "new_clusts" id like this - 7 becomes C7. Then add count of each clonotype in parenthesis - C7(5)
+  data_group_modified <- data_group%>%                   
+  mutate(C = paste("C"))%>%
+  unite(new_clusts_ID, c("C", "seurat_clusters"), sep = "")%>%
+  mutate(new_clusts_count=paste(new_clusts_ID, "(", count,")", sep =""))
+
+  #View(data_group_modified) 
+  #Now merge unique clonotypes from different clusters
+  data_group_final <- data_group_modified%>%                   
+  group_by(v_gene_g, j_gene_g, cdr3_g, cdr3_d, org_v_gene_d, d_gene_d, j_gene_d) %>%        
+  summarise(Count = sum(count), cluster_ID_w_count=paste(new_clusts_count, collapse=","))%>%
+  arrange(desc(Count))%>%
+  mutate(Clonotype=paste0(v_gene_g,"-",cdr3_g,"-",cdr3_d,"-", org_v_gene_d))
+  
+  data_group_final <- data_group_final %>%
+  select(Clonotype, everything())
+  
+  data_group_final <- tibble::rownames_to_column(data_group_final, "Clonotype_ID")
+#View(data_group_final)
+
+write.xlsx(as.data.frame(data_group_final),paste0(organ.id,"-",SEURAT_CLUSTERS.TITLE,"_clonotypes.xlsx", sep = ""), sheetName = hash_Ids[j], row.names=FALSE, col.names = TRUE, append = TRUE)
+}
+```
+
+
+
