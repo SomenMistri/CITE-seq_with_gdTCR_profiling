@@ -1,0 +1,339 @@
+---
+title: "R Notebook on 9.2_CDR3γ_or_CDR3δ_amino_aa_length_distribution"
+output: html_notebook
+---
+#### Get the input file:
+After the "4_Normalization_clustering_BasicViz" step, there should be a file named "data_clust_cc_stress_regressed.rds". Copy this file to the current folder where you have this .rmd file ("5_cluster_freq_calculation").
+
+#### Load required packages:
+To load the required packages, execute the following code:
+
+```{r}
+library(Seurat)
+library(ggplot2)
+library(readxl)
+library(tibble)
+library(dplyr)
+library(patchwork)
+library(ggrepel)
+library(RColorBrewer)
+library(tidyr)
+library(svglite)
+```
+
+Note: If you haven't installed the packages yet, please install them before loading.
+
+
+```{r Load data}
+#Load previously prepared data and show clusters
+data <- readRDS ("data_clust_cc_stress_regressed.rds")
+# Projecting clusters on UMAP visualization
+DimPlot(data, group.by = "seurat_clusters", pt.size = 1.5, label = TRUE)
+
+ggsave("E17_thy_clusters.png", height=8, width=12, units='in', dpi = 300, bg = "transparent", device='png')
+```
+
+#### Step 1: Data Loading and adding len_g and len_d columsn
+Read the clustered data by running the following code:
+
+```{r}
+data_clust <- readRDS("data_clust_cc_stress_regressed.rds")
+
+# Let's take a look at the data to ensure everything looks good
+DimPlot(data_clust, reduction = "umap", label = TRUE) + NoLegend()
+```
+
+Add len_g and len_d columns with CDR3 length counts
+```{r}
+data_clust@meta.data$len_g <- nchar(data_clust@meta.data$cdr3_g)
+data_clust@meta.data$len_d <- nchar(data_clust@meta.data$cdr3_d)
+```
+
+#### Step 2: Make spectratype plots for gamma (γ) chain only
+In this section, TRGV specific variables are declared to subset specific cell types or specific clusters or specific chains. Also, the variables are used to generate the final file name automatically. 
+```{r}
+organ.id <- "E17"  # 'organ.id' represents the identifier for the specific organ or sample used in the analysis, set as "E17".
+
+# Arrays specifying all available cell types and clusters for subsequent analysis and naming conventions
+hash.all <- levels(data_clust@meta.data$hash.type)
+cluster.all <- levels(data_clust@meta.data$seurat_clusters)
+trgv.all <- levels(data_clust@meta.data$v_gene_g)
+
+
+# Define the specific hash.type clusters to analyze, either "B6" or "SAP". Adjust 'HASHTYPE.TITLE' accordingly.
+HASHTYPE <- "B6" #Default = hash.all
+HASHTYPE.TITLE <- "B6"
+
+
+# Define the specific clusters to analyze, either "0" or a specific set or use all available clusters 'cluster.all'. Adjust 'SEURAT_CLUSTERS.TITLE' accordingly.
+SEURAT_CLUSTERS <- cluster.all #Default = cluster.all
+SEURAT_CLUSTERS.TITLE <- "Clusterall"
+
+#Define which TCRγ chain (v_gene_g) you wanna look at - "TRGV2" or "TRGV4" or trgv.all
+V_GENE_G <- trgv.all
+V_GENE_G.TITLE <- "trgv.all"
+
+#Now, set the lower and upper limit of CDR3 length (len_g on x-axis). Min value 0 and max value 35. Recommended to keep between 7-25
+xlim <- c(9,26)
+
+#Finally set the lower and upper limit of Frequency (y-axis). In first pass I keep it NULL. Then if needed it can be set as c(0,0.4) (0.4 means limit is set at 40%)
+ylim <- c(0,1)  #Default= NULL, c(0,0.9)
+```
+
+Now, run a common script based on the variables set above
+```{r}
+###FIRST subset the cluster(s) we are interested in and count the number of cells (remove "NA" so that we count only cells with valid gamma chain) in that group (store in the variable "sum_cells")
+Idents(data_clust) <- "hash.type"
+data.subset0 <- subset(data_clust, idents = HASHTYPE)
+
+Idents(data.subset0) <- "seurat_clusters"
+data.subset0 <- subset(data.subset0, idents = SEURAT_CLUSTERS)
+#remove "NA" from v_gene_g (If there is no "NA", please skip this line)
+Idents(data.subset0) <- "v_gene_g"
+#data.subset0 <- subset(data.subset0, idents = "NA", invert=TRUE)
+data.subset.vdj0 <- as.data.frame(data.subset0@meta.data)
+#View(data.subset0)
+#View(data.subset.vdj0)
+
+#Now group based on Unique CDR3s
+data_group0 <- data.subset.vdj0%>%                   
+  group_by(.dots=c("cdr3_g","len_g")) %>%        
+  summarise(count = n()) %>%
+  arrange(desc(count))
+#View(data_group0)
+
+sum_cell <- sum(data_group0$count) #This portion was just to get to this sum_cells count
+
+### Second, now start with original "data" and subset the specific cluster as well as specific chain
+Idents(data_clust) <- "hash.type"
+data.subset <- subset(data_clust, idents = HASHTYPE)
+
+Idents(data.subset) <- "seurat_clusters"
+data.subset <- subset(data.subset, idents = SEURAT_CLUSTERS)
+
+Idents(data.subset) <- "v_gene_g"
+data.subset <- subset(data.subset, idents = V_GENE_G)
+data.subset.vdj <- as.data.frame(data.subset@meta.data)
+#View(data.subset)
+#View(data.subset.vdj)
+
+#Unite CDR3_g with v_gene_g
+data.group.vdj <- data.subset.vdj%>%
+  unite(cdr3_trgv, c("cdr3_g","v_gene_g"), sep = "-")
+
+#Now group based on Unique CDR3s
+data_group <- data.group.vdj%>%                   
+  group_by(.dots=c("cdr3_trgv","len_g")) %>%        
+  summarise(count = n()) %>%
+  arrange(desc(count))
+#View(data_group)
+
+#Keep the top 10 clonotypes and rename rest as "Others"
+x <- data_group%>%
+  ungroup()%>%
+  slice(1:10)%>%
+  mutate(cdr3_g_rename = cdr3_trgv)
+
+y <- data_group%>%
+  ungroup()%>%
+  slice(11:n())%>%
+  mutate(cdr3_g_rename = "Others")
+
+# now join them back again
+data_group <- bind_rows(x,y)
+data_group$cdr3_g_rename <- factor(data_group$cdr3_g_rename, levels = rev(as.character(unique(data_group$cdr3_g_rename))))
+#View(data_group)
+
+#identify total number of cells in TRGV group and put in a variable named "sum_chain"
+sum_chain <- sum(data_group$count)
+
+#now group and sum freq values based on len_g (now freq calculation here is based on total number of cells in selected cluster)
+data_group <- data_group%>%
+  group_by(.dots=c("cdr3_g_rename","len_g")) %>%        
+  summarize_at(vars(-cdr3_trgv), funs(sum))%>%
+  mutate(freq = count/sum_cell)%>%
+  ungroup() %>%
+  arrange(len_g) 
+data_group <- data_group[order(as.numeric(as.character(data_group$len_g))), ]
+data_group$len_g <- factor(data_group$len_g, levels = as.character(unique(data_group$len_g)))
+#View(data_group)
+
+#now make ggplot
+data_group$len_g <- as.numeric(as.character(data_group$len_g))
+p <- ggplot(data_group, aes(x=len_g, y=freq, fill=cdr3_g_rename))+
+  geom_bar(stat="identity", width = 0.8, colour="black", position = "stack", size=1.0)+
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1), limits = ylim)+
+  scale_x_continuous(breaks=c(0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30), limits=xlim)+
+  scale_fill_manual(values=c("#999999","#56B4E9","#87afff","#afafd7","#3399cc","#f46d43","#00ff00","#E69F00","#f1b6da","#ffaf00","#87af5f"))+ # Note: HARD PART: change the color order here to match the clonotype colors on the plot
+  labs(title = paste(HASHTYPE.TITLE,"-",SEURAT_CLUSTERS.TITLE,"-",V_GENE_G.TITLE,"-(nCell=",sum_cell,")","-(nchain=",sum_chain,")", sep = ""),
+       x = "CDR3aa length",
+       y = "Frequency")+
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    legend.background = element_blank(),
+    axis.ticks.length=unit(.35, "cm"),
+    axis.ticks=element_line(color="black", size = 1.5),
+    axis.line.x = element_line(color="black", size = 1.5),
+    axis.line.y = element_line(color="black", size = 1.5),
+    axis.text.x = element_text(colour="black", size= 34, face="bold"),
+    axis.text.y = element_text(colour="black", size= 34, face="bold"),
+    plot.title = element_text(color="black", size=34, face="bold",hjust = 0.5, vjust = -1),
+    axis.title.x = element_text(color="black", size=34, face="bold"),
+    axis.title.y = element_text(color="black", size=34, face="bold"),
+    #legend.title = element_text(color="black", size=22, face="bold", vjust = 10, hjust = -3),
+    legend.title = element_blank(),
+    legend.position = c(0.7, 0.70),
+    legend.text = element_text(color = "black", size=28))
+
+p
+
+ggsave(p, path = "Figs", filename = paste(organ.id,"-",HASHTYPE.TITLE,"-",SEURAT_CLUSTERS.TITLE,"-",V_GENE_G.TITLE,".png", sep = ""),  height=10, width=14, units='in', dpi = 300, bg = "transparent", device='png')
+
+#ggsave(p, path = "Figs", filename = paste(organ.id,"-",HASHTYPE.TITLE,"-",SEURAT_CLUSTERS.TITLE,"-",V_GENE_G.TITLE,".svg", sep = ""),  height=10, width=14, units='in', dpi = 300, bg = "transparent", device='svg')
+```
+
+
+#### Step 2: Make spectratype plots for delta (δ) chain only
+In this section, TRGV specific variables are declared to subset specific cell types or specific clusters or specific chains. Also, the variables are used to generate the final file name automatically. 
+```{r}
+organ.id <- "E17"  # 'organ.id' represents the identifier for the specific organ or sample used in the analysis, set as "E17".
+
+# Arrays specifying all available cell types and clusters for subsequent analysis and naming conventions
+hash.all <- levels(data_clust@meta.data$hash.type)
+cluster.all <- levels(data_clust@meta.data$seurat_clusters)
+trdv.all <- levels(data_clust@meta.data$v_gene_d)
+
+
+# Define the specific hash.type clusters to analyze, either "B6" or "SAP". Adjust 'HASHTYPE.TITLE' accordingly.
+HASHTYPE <- "B6" #Default = hash.all
+HASHTYPE.TITLE <- "B6"
+
+
+# Define the specific clusters to analyze, either "0" or a specific set or use all available clusters 'cluster.all'. Adjust 'SEURAT_CLUSTERS.TITLE' accordingly.
+SEURAT_CLUSTERS <- cluster.all #Default = cluster.all
+SEURAT_CLUSTERS.TITLE <- "Clusterall"
+
+#Define which TCRγ chain (v_gene_g) you wanna look at - "TRGV2" or "TRGV4" or trgv.all
+V_GENE_D <- trdv.all
+V_GENE_D.TITLE <- "trdv.all"
+
+#Now, set the lower and upper limit of CDR3 length (len_g on x-axis). Min value 0 and max value 35. Recommended to keep between 7-25
+xlim <- c(9,26)
+
+#Finally set the lower and upper limit of Frequency (y-axis). In first pass I keep it NULL. Then if needed it can be set as c(0,0.4) (0.4 means limit is set at 40%)
+ylim <- c(0,1)  #Default= NULL, c(0,0.9)
+```
+
+Now, run a common script based on the variables set above
+```{r}
+###FIRST subset the cluster(s) we are interested in and count the number of cells (remove "NA" so that we count only cells with valid gamma chain) in that group (store in the variable "sum_cells")
+Idents(data_clust) <- "hash.type"
+data.subset0 <- subset(data_clust, idents = HASHTYPE)
+Idents(data.subset0) <- "seurat_clusters"
+data.subset0 <- subset(data.subset0, idents = SEURAT_CLUSTERS)
+#remove "NA" from v_gene_d
+Idents(data.subset0) <- "v_gene_d"
+data.subset0 <- subset(data.subset0, idents = "NA", invert=TRUE)
+
+data.subset.vdj0 <- as.data.frame(data.subset0@meta.data)
+#View(data.subset0)
+#View(data.subset.vdj0)
+
+#Now group based on Unique CDR3s
+data_group0 <- data.subset.vdj0%>%                   
+  group_by(.dots=c("cdr3_d","len_d")) %>%        
+  summarise(count = n()) %>%
+  arrange(desc(count))
+#View(data_group0)
+
+sum_cell <- sum(data_group0$count) #This portion was just to get to this sum_cells count
+
+
+#########Second, now start with original "data" and subset the specific cluster as well as specific chain
+Idents(data_clust) <- "hash.type"
+data.subset <- subset(data_clust, idents = HASHTYPE)
+Idents(data.subset) <- "seurat_clusters"
+data.subset <- subset(data.subset, idents = SEURAT_CLUSTERS)
+Idents(data.subset) <- "v_gene_d"
+data.subset <- subset(data.subset, idents = V_GENE_D)
+data.subset.vdj <- as.data.frame(data.subset@meta.data)
+#View(data.subset)
+#View(data.subset.vdj)
+
+#Unite CDR3_d with v_gene_d
+data.group.vdj <- data.subset.vdj%>%
+  unite(cdr3_trdv, c("cdr3_d","v_gene_d"), sep = "-")
+
+#Now group based on Unique CDR3s
+data_group <- data.group.vdj%>%                   
+  group_by(.dots=c("cdr3_trdv","len_d")) %>%        
+  summarise(count = n()) %>%
+  arrange(desc(count))
+#View(data_group)
+
+#Keep the top 10 clonotypes and rename rest as "Others"
+x <- data_group%>%
+  ungroup()%>%
+  slice(1:10)%>%
+  mutate(cdr3_d_rename = cdr3_trdv)
+
+y <- data_group%>%
+  ungroup()%>%
+  slice(11:n())%>%
+  mutate(cdr3_d_rename = "Others")
+
+# now join them back again
+data_group <- bind_rows(x,y)
+data_group$cdr3_d_rename <- factor(data_group$cdr3_d_rename, levels = rev(as.character(unique(data_group$cdr3_d_rename))))
+#View(data_group)
+
+#identify total number of cells in TRDV group and put in a variable named "sum_chain"
+sum_chain <- sum(data_group$count)
+
+#now group and sum freq values based on len_d (now freq calculation here is based on total number of cells in selected cluster)
+data_group <- data_group%>%
+  group_by(.dots=c("cdr3_d_rename","len_d")) %>%        
+  summarize_at(vars(-cdr3_trdv), funs(sum))%>%
+  mutate(freq = count/sum_cell)%>%
+  ungroup() %>%
+  arrange(len_d) 
+data_group <- data_group[order(as.numeric(as.character(data_group$len_d))), ]
+data_group$len_d <- factor(data_group$len_d, levels = as.character(unique(data_group$len_d)))
+#View(data_group)
+
+#now make ggplot
+data_group$len_d <- as.numeric(as.character(data_group$len_d))
+p <- ggplot(data_group, aes(x=len_d, y=freq, fill=cdr3_d_rename))+
+  geom_bar(stat="identity", width = 0.8, colour="black", position = "stack", size=1.0)+
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1), limits = ylim)+
+  scale_x_continuous(breaks=c(0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30), limits=xlim)+
+  scale_fill_manual(values=c("#999999","#33ffff","#990000","#663366","#993333","#67001f","#ff00ff","#D55E00","#ffcc33","#ff9999"))+
+  labs(title = paste(HASHTYPE.TITLE,"-",SEURAT_CLUSTERS.TITLE,"-",V_GENE_D.TITLE,"-(nCell=",sum_cell,")","-(nchain=",sum_chain,")", sep = ""),
+       x = "CDR3aa length",
+       y = "Frequency")+
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    legend.background = element_blank(),
+    axis.ticks.length=unit(.35, "cm"),
+    axis.ticks=element_line(color="black", size = 1.5),
+    axis.line.x = element_line(color="black", linewidth = 1.5),
+    axis.line.y = element_line(color="black", linewidth = 1.5),
+    axis.text.x = element_text(colour="black", size= 34, face="bold"),
+    axis.text.y = element_text(colour="black", size= 34, face="bold"),
+    plot.title = element_text(color="black", size=34, face="bold",hjust = 0.5, vjust = -1),
+    axis.title.x = element_text(color="black", size=34, face="bold"),
+    axis.title.y = element_text(color="black", size=34, face="bold"),
+    #legend.title = element_text(color="black", size=22, face="bold", vjust = 10, hjust = -3),
+    legend.title = element_blank(),
+    legend.position = c(0.3, 0.70),
+    legend.text = element_text(color = "black", size=28))
+p
+
+ggsave(p, path = "Figs", filename = paste(organ.id, "-", HASHTYPE.TITLE,"-",SEURAT_CLUSTERS.TITLE,"-",V_GENE_D.TITLE,".png", sep = ""),  height=10, width=14, units='in', dpi = 300, bg = "transparent", device='png')
+
+#ggsave(p, path = "Figs", filename = paste(organ.id, "-", HASHTYPE.TITLE,"-",SEURAT_CLUSTERS.TITLE,"-",V_GENE_D.TITLE,".svg", sep = ""),  height=10, width=14, units='in', dpi = 300, bg = "transparent", device='svg')
+```
