@@ -1,0 +1,312 @@
+---
+title: "R Notebook on 9.3_clonotype_top100_bubbleplot"
+output: html_notebook
+---
+#### Get the input file:
+After the "4_Normalization_clustering_BasicViz" step, there should be a file named "data_clust_cc_stress_regressed.rds". Copy this file to the current folder where you have this .rmd file ("5_cluster_freq_calculation").
+
+#### Load required packages:
+To load the required packages, execute the following code:
+
+```{r load Libraries}
+library(Seurat)
+library(ggplot2)
+library(readxl)
+library(tibble)
+library(dplyr)
+library(patchwork)
+library(ggrepel)
+library(RColorBrewer)
+library(tidyr)
+library("xlsx")
+library(packcircles)
+library(viridis)
+```
+
+Note: If you haven't installed the packages yet, please install them before loading.
+
+#### Step 1: Data Loading and adding len_g and len_d columsn
+Read the clustered data by running the following code:
+
+```{r}
+data_clust <- readRDS("data_clust_cc_stress_regressed.rds")
+
+# Let's take a look at the data to ensure everything looks good
+DimPlot(data_clust, reduction = "umap", label = TRUE) + NoLegend()
+```
+
+#### Step 2: Make bubble plots for specific or all TRGV clonotypes while color coding TRDV usage
+In this section, TRGV specific variables are declared to subset specific cell types or specific clusters or specific TRGV+ cells. Also, the variables are used to generate the final file name automatically. 
+Moreover, here the color coding is for separating specific TRDV+ clonotypes from each other.
+```{r}
+organ.id <- "E17"  # 'organ.id' represents the identifier for the specific organ or sample used in the analysis, set as "E17".
+
+# Arrays specifying all available cell types and clusters for subsequent analysis and naming conventions
+hash.all <- levels(data_clust@meta.data$hash.type)
+cluster.all <- levels(data_clust@meta.data$seurat_clusters)
+trgv.all <- levels(data_clust@meta.data$v_gene_g)
+
+
+# Define the specific hash.type clusters to analyze, either "B6" or "SAP". Adjust 'HASHTYPE.TITLE' accordingly.
+HASHTYPE <- "B6" #Default = hash.all
+HASHTYPE.TITLE <- "B6"
+
+
+# Define the specific clusters to analyze, either "0" or a specific set or use all available clusters 'cluster.all'. Adjust 'SEURAT_CLUSTERS.TITLE' accordingly.
+SEURAT_CLUSTERS <- cluster.all #Default = cluster.all
+SEURAT_CLUSTERS.TITLE <- "Clusterall"
+
+#Define which TCRγ chain (v_gene_g) you wanna look at - "TRGV2" or "TRGV4" or trgv.all
+V_GENE_G <- "TRGV4"
+V_GENE_G.TITLE <- "trgv4"
+
+# Define the number of dots (unique clonotypes) to be shown. Here, the default is 100. 
+DOTS <- 100
+DOTS_Title <- "100"
+```
+
+Now, run a common script based on the variables set above
+```{r}
+#Set up levels of TRDV genes
+data_clust$v_gene_d <- factor(data_clust$v_gene_d, levels =c("TRDV1","TRDV2","TRDV4","TRDV5","TRDV6","TRDV7","TRDV8","TRDV9","TRDV10","TRDV11","TRDV12","TRAV15N-1","TRAVs","NA"))
+
+# Removal of "NA" from both gamma and delta chain important for this script to work
+Idents(data_clust) <- "v_gene_d" 
+data.subset <- subset(data_clust, idents = "NA", invert=TRUE) # (If there is no "NA", please skip this line)
+
+Idents(data.subset) <- "v_gene_g"
+data.subset <- subset(data.subset, idents = V_GENE_G) # (If there is no "NA", please skip this line)
+
+Idents(data.subset) <- "cdr3_g"
+data.subset <- subset(data.subset, idents = "NA", invert=TRUE) # (If there is no "NA", please skip this line)
+
+Idents(data.subset) <- "cdr3_d"
+data.subset <- subset(data.subset, idents = "NA", invert=TRUE) # (If there is no "NA", please skip this line)
+
+
+#Make specific subset based on the variables set in the previous step
+Idents(data.subset) <- "hash.type"
+data.subset <- subset(data.subset, idents = HASHTYPE)
+
+Idents(data.subset) <- "seurat_clusters"
+data.subset <- subset(data.subset, idents = SEURAT_CLUSTERS) # (If there is any cluster missing in the subsetted data, this line will not work. in that case just skip the line)
+data.subset.vdj <- as.data.frame(data.subset@meta.data)
+
+#Now group based on Unique CDR3s
+data_group <- data.subset.vdj%>%                   
+  group_by(.dots=c("v_gene_g","j_gene_g","cdr3_g","cdr3_d","v_gene_d","d_gene_d","j_gene_d","seurat_clusters")) %>%        
+  summarise(count = n())%>%
+  arrange(desc(count))
+#View(data_group)
+
+  
+#Now convert "new_clusts" id like this - 7 becomes C7. Then add count of each clonotype in parenthesis - C7(5)
+data_group_modified <- data_group%>% 
+  mutate(C = paste("C"))%>%
+  unite(new_clusts_ID, c("C", "seurat_clusters"), sep = "")%>%
+  mutate(new_clusts_count=paste(new_clusts_ID, "(", count,")", sep =""))
+#View(data_group_modified) 
+
+
+#Now merge unique clonotypes from different clusters
+data_group_final <- data_group_modified%>%                   
+  group_by(.dots=c("v_gene_g","j_gene_g","cdr3_g","cdr3_d","v_gene_d","d_gene_d","j_gene_d")) %>%        
+  summarise(Count = sum(count), cluster_ID_w_count=paste(new_clusts_count, collapse=","))
+
+  #Shuffle the rows so that singletons are not ordered by v_gene_g usage
+data_group_final2 <- data_group_final[sample(1:nrow(data_group_final)), ]
+
+data_group_final3 <- data_group_final2%>%
+  arrange(desc(Count))%>%
+  mutate(Clonotype=paste0(v_gene_g,"-",cdr3_g,"-",cdr3_d,"-", v_gene_d))
+
+# Sum count of all the top 100 clonotypes
+sum_cell <- sum(data_group_final3$Count)
+
+# Add frequency column
+data_group_freq <- data_group_final3%>%                   
+  mutate(freq = Count/sum_cell)
+
+
+# Keep the top 100 or 50 (DOTS) clones 
+data_group_DOTS <- head(data_group_freq, DOTS)
+data_group_DOTS_save <- tibble::rownames_to_column(data_group_DOTS, "Clonotype_ID")
+write.xlsx(as.data.frame(data_group_DOTS_save),paste0(organ.id,"-",HASHTYPE.TITLE,"-",V_GENE_G.TITLE,"-",SEURAT_CLUSTERS.TITLE,".xlsx", sep = ""), row.names=FALSE, col.names = TRUE, append = FALSE)
+
+
+# Generate the layout. sizetype can be area or radius, following your preference on what to be proportional to value.
+packing <- circleProgressiveLayout(data_group_DOTS$freq, sizetype='area')
+data_group_pack <- cbind(data_group_DOTS, packing)
+dat.gg <- circleLayoutVertices(packing, npoints=DOTS)
+packing2 <- cbind(packing, data_group_pack$v_gene_d)
+dat.gg2 <- circleLayoutVertices(packing2, npoints=DOTS, idcol = 4)
+# add v_gene_g info the the dat.gg file. This will help with coloring
+dat.gg.bind <- cbind(dat.gg, dat.gg2$id)
+#rename column names
+colnames(dat.gg.bind) <- c('x','y','id','v_gene_d')
+
+# Set up color code for TRDV chains
+chainname <- c("TRDV1","TRDV2","TRDV4","TRDV5","TRDV6","TRDV7","TRDV8","TRDV9","TRDV10","TRDV11","TRDV12","TRAV15N-1","TRAVs","NA") # this is all the chains we may ever expect
+colorHex <- c("#fddbc7","#c2a5cf","#de77ae","#fdae61","#c7eae5","#ffffbf","#e6f5d0","#bababa","#8c510a","#003c30","#80cdc1","#7fbc41","#f7f7f7","#1a1a1a") # This is the the chosen color scheme for each of the expected TRDV chains. Edit this color scheme and order to fit the total number of unique TRDV chains identified
+
+colorbank <- data.frame(chainname,colorHex)
+
+# Identify the TRDV chains that are only present in the subsetted datset
+subset_TRDV <- data_group_DOTS%>%                   
+  group_by(.dots=c("v_gene_d"))%>%
+  summarise(count = n())
+# Merge two dataframes together containing common characters in specific columns
+color_select <- left_join(subset_TRDV, colorbank, by=c('v_gene_d'='chainname'))
+
+# Basic color customization
+ggplot() + 
+  geom_polygon(data = dat.gg.bind, aes(x, y, group = id, fill=as.factor(v_gene_d)), colour = "black", alpha = 0.9) +
+  scale_fill_manual(values = color_select$colorHex) +
+  labs(title = paste(organ.id,"-",HASHTYPE.TITLE,"-",V_GENE_G.TITLE,"-",SEURAT_CLUSTERS.TITLE, sep = ""))+
+  scale_size_continuous(range = c(1,4)) +
+  theme_void() + 
+  theme(legend.position="right") +
+  coord_equal()
+
+ggsave(path = "Figs", filename = paste(organ.id,"-",HASHTYPE.TITLE,"-",V_GENE_G.TITLE,"-",SEURAT_CLUSTERS.TITLE,"-",DOTS_Title,"clones.png", sep = ""),  height=5, width=8, units='in', dpi = 300, bg = "transparent", device='png')
+
+#ggsave(path = "Figs", filename = paste(organ.id,"-",HASHTYPE.TITLE,"-",V_GENE_G.TITLE,"-",SEURAT_CLUSTERS.TITLE,"-",DOTS_Title,"clones.svg", sep = ""),  height=5, width=8, units='in', dpi = 300, bg = "transparent", device='svg')
+
+#################
+# Note: The actual sequences of the top clonotypes of the bubble plot can be inferred from the .xlsx file of the same name that this script automatically produces
+#################
+```
+
+
+#### Step 3: Make bubble plots for specific or all TRDV clonotypes while color coding TRGV usage
+In this section, TRGV specific variables are declared to subset specific cell types or specific clusters or specific TRGV+ cells. Also, the variables are used to generate the final file name automatically. 
+Moreover, here the color coding is for separating specific TRDV+ clonotypes from each other.
+```{r}
+organ.id <- "E17"  # 'organ.id' represents the identifier for the specific organ or sample used in the analysis, set as "E17".
+
+# Arrays specifying all available cell types and clusters for subsequent analysis and naming conventions
+hash.all <- levels(data_clust@meta.data$hash.type)
+cluster.all <- levels(data_clust@meta.data$seurat_clusters)
+trdv.all <- levels(data_clust@meta.data$v_gene_d)
+
+
+# Define the specific hash.type clusters to analyze, either "B6" or "SAP". Adjust 'HASHTYPE.TITLE' accordingly.
+HASHTYPE <- "B6" #Default = hash.all
+HASHTYPE.TITLE <- "B6"
+
+
+# Define the specific clusters to analyze, either "0" or a specific set or use all available clusters 'cluster.all'. Adjust 'SEURAT_CLUSTERS.TITLE' accordingly.
+SEURAT_CLUSTERS <- cluster.all #Default = cluster.all
+SEURAT_CLUSTERS.TITLE <- "Clusterall"
+
+#Define which TCRγ chain (v_gene_g) you wanna look at - "TRGV2" or "TRGV4" or trgv.all
+V_GENE_D <- trdv.all
+V_GENE_D.TITLE <- "trdv.all"
+
+# Define the number of dots (unique clonotypes) to be shown. Here, the default is 100. 
+DOTS <- 100
+DOTS_Title <- "100"
+```
+
+Now, run a common script based on the variables set above
+```{r}
+#Set up levels of TRGV genes
+data_clust$v_gene_g <- factor(data_clust$v_gene_g, levels =c("TRGV1","TRGV2","TRGV3","TRGV4","TRGV5","TRGV6","TRGV7","NA"))
+
+#Removal of "NA" from both gamma and delta chain important for this script to work
+Idents(data_clust) <- "org_v_gene_d" 
+data.subset <- subset(data_clust, idents = "NA", invert=TRUE) # (If there is no "NA", please skip this line)
+
+Idents(data.subset) <- "v_gene_g"
+data.subset <- subset(data.subset, idents = "NA", invert=TRUE) # (If there is no "NA", please skip this line)
+
+Idents(data.subset) <- "cdr3_g"
+data.subset <- subset(data.subset, idents = "NA", invert=TRUE) # (If there is no "NA", please skip this line)
+
+Idents(data.subset) <- "cdr3_d"
+data.subset <- subset(data.subset, idents = "NA", invert=TRUE) # (If there is no "NA", please skip this line)
+
+
+#Make specific subset based on the variables set in the previous step
+Idents(data.subset) <- "hash.type"
+data.subset <- subset(data.subset, idents = HASHTYPE)
+
+Idents(data.subset) <- "seurat_clusters"
+data.subset <- subset(data.subset, idents = SEURAT_CLUSTERS) # (If there is any cluster missing in the subsetted data, this line will not work. in that case just skip the line)
+data.subset.vdj <- as.data.frame(data.subset@meta.data)
+
+#Now group based on Unique CDR3s
+data_group <- data.subset.vdj%>%                   
+  group_by(.dots=c("v_gene_g","j_gene_g","cdr3_g","cdr3_d","org_v_gene_d","d_gene_d","j_gene_d","seurat_clusters")) %>%        
+  summarise(count = n())%>%
+  arrange(desc(count))
+#View(data_group)
+
+  
+#Now convert "new_clusts" id like this - 7 becomes C7. Then add count of each clonotype in parenthesis - C7(5)
+data_group_modified <- data_group%>% 
+  mutate(C = paste("C"))%>%
+  unite(new_clusts_ID, c("C", "seurat_clusters"), sep = "")%>%
+  mutate(new_clusts_count=paste(new_clusts_ID, "(", count,")", sep =""))
+#View(data_group_modified) 
+
+
+#Now merge unique clonotypes from different clusters
+data_group_final <- data_group_modified%>%                   
+  group_by(.dots=c("v_gene_g","j_gene_g","cdr3_g","cdr3_d","org_v_gene_d","d_gene_d","j_gene_d")) %>%        
+  summarise(Count = sum(count), cluster_ID_w_count=paste(new_clusts_count, collapse=","))
+
+  #Shuffle the rows so that singletons are not ordered by v_gene_g usage
+data_group_final2 <- data_group_final[sample(1:nrow(data_group_final)), ]
+
+data_group_final3 <- data_group_final2%>%
+  arrange(desc(Count))%>%
+  mutate(Clonotype=paste0(v_gene_g,"-",cdr3_g,"-",cdr3_d,"-", org_v_gene_d))
+
+# Sum count of all the top 100 clonotypes
+sum_cell <- sum(data_group_final3$Count)
+
+# Add frequency column
+data_group_freq <- data_group_final3%>%                   
+  mutate(freq = Count/sum_cell)
+
+
+# Keep the top 100 clones 
+data_group_100 <- head(data_group_freq, 100)
+data_group_100_save <- tibble::rownames_to_column(data_group_100, "Clonotype_ID")
+write.xlsx(as.data.frame(data_group_DOTS_save),paste0(organ.id,"-",HASHTYPE.TITLE,"-",V_GENE_D.TITLE,"-",SEURAT_CLUSTERS.TITLE,".xlsx", sep = ""), row.names=FALSE, col.names = TRUE, append = FALSE)
+
+
+# Generate the layout. sizetype can be area or radius, following your preference on what to be proportional to value.
+packing <- circleProgressiveLayout(data_group_100$freq, sizetype='area')
+data_group_pack <- cbind(data_group_100, packing)
+dat.gg <- circleLayoutVertices(packing, npoints=100)
+packing2 <- cbind(packing, data_group_pack$v_gene_g)
+dat.gg2 <- circleLayoutVertices(packing2, npoints=100, idcol = 4)
+# add v_gene_g info the the dat.gg file. This will help with coloring
+dat.gg.bind <- cbind(dat.gg, dat.gg2$id)
+#rename column names
+colnames(dat.gg.bind) <- c('x','y','id','v_gene_g')
+
+
+# Basic color customization
+ggplot() + 
+  geom_polygon(data = dat.gg.bind, aes(x, y, group = id, fill=as.factor(v_gene_g)), colour = "black", alpha = 0.9) +
+  # Adjust colors based on number of v_gene_g chains. default: c("#66c2a5","#ffffb3","#bebada","#fb8072","#80b1d3","#fdb462","#b3de69")
+  scale_fill_manual(values = c("#66c2a5","#ffffb3","#bebada","#fb8072","#80b1d3","#fdb462","#b3de69")) +
+  labs(title = paste(organ.id,"-",HASHTYPE.TITLE,"-",V_GENE_D.TITLE,"-",SEURAT_CLUSTERS.TITLE, sep = ""))+
+  scale_size_continuous(range = c(1,4)) +
+  theme_void() + 
+  theme(legend.position="right") +
+  coord_equal()
+
+ggsave(path = "Figs", filename = paste(organ.id,"-",HASHTYPE.TITLE,"-",SEURAT_CLUSTERS.TITLE,".png", sep = ""),  height=5, width=8, units='in', dpi = 300, bg = "transparent", device='png')
+
+ggsave(path = "Figs", filename = paste(organ.id,"-",HASHTYPE.TITLE,"-",V_GENE_D.TITLE,"-",SEURAT_CLUSTERS.TITLE,"-",DOTS_Title,"clones.png", sep = ""),  height=5, width=8, units='in', dpi = 300, bg = "transparent", device='png')
+#ggsave(path = "Figs", filename = paste(organ.id,"-",HASHTYPE.TITLE,"-",V_GENE_D.TITLE,"-",SEURAT_CLUSTERS.TITLE,"-",DOTS_Title,"clones.svg", sep = ""),  height=5, width=8, units='in', dpi = 300, bg = "transparent", device='svg')
+
+
+#################
+# Note: The actual sequences of the top clonotypes of the bubble plot can be inferred from the .xlsx file of the same name that this script automatically produces
+#################
+```
