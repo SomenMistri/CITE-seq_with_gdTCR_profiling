@@ -1,0 +1,116 @@
+---
+title: "R Notebook on 9.4_clonotype_featureplot"
+output: html_notebook
+---
+#### Get the input file:
+After the "4_Normalization_clustering_BasicViz" step, there should be a file named "data_clust_cc_stress_regressed.rds". Copy this file to the current folder where you have this .rmd file ("5_cluster_freq_calculation").
+
+#### Load required packages:
+To load the required packages, execute the following code:
+```{r}
+library(Seurat)
+library(ggplot2)
+library(readxl)
+library(tibble)
+library(dplyr)
+library(patchwork)
+library(ggrepel)
+library(RColorBrewer)
+library(tidyr)
+library(ggpubr)
+```
+
+Note: If you haven't installed the packages yet, please install them before loading.
+
+#### Step 1: Data Loading and creating new column named "clonotype"
+Read the clustered data by running the following code:
+```{r}
+data_clust <- readRDS("data_clust_cc_stress_regressed.rds")
+
+# Let's take a look at the data to ensure everything looks good
+DimPlot(data_clust, reduction = "umap", label = TRUE) + NoLegend()
+```
+
+Now make a new column named clonotype in the following format :
+TRGV-cdr3_g-cdr3_d-TRDV: TRGV5-CACWDSSGFHKVF-CASGYIGGIRATDKLVF-TRAV13-4/DV7
+
+```{r}
+data_clust@meta.data$clonotype <- paste(data_clust@meta.data$v_gene_g, data_clust@meta.data$cdr3_g, data_clust@meta.data$cdr3_d, data_clust@meta.data$org_v_gene_d, sep="-")
+```
+
+#### Step 2: Set variables and run common script
+```{r}
+organ.id <- "E17_thy"  # 'organ.id' represents the identifier for the specific organ or sample used in the analysis, set as "E17".
+
+# Arrays specifying all available cell types and clusters for subsequent analysis and naming conventions
+hash.all <- levels(data_clust@meta.data$hash.type)
+cluster.all <- levels(data_clust@meta.data$seurat_clusters)
+trgv.all <- levels(data_clust@meta.data$v_gene_g)
+
+
+# Define the specific hash.type clusters to analyze, either "B6" or "SAP". Adjust 'HASHTYPE.TITLE' accordingly.
+HASHTYPE <- "B6" #Default = hash.all
+HASHTYPE.TITLE <- "B6"
+
+
+# Define the specific clusters to analyze, either "0" or a specific set or use all available clusters 'cluster.all'. Adjust 'SEURAT_CLUSTERS.TITLE' accordingly.
+SEURAT_CLUSTERS <- cluster.all #Default = cluster.all
+SEURAT_CLUSTERS.TITLE <- "Clusterall"
+
+# Define clonotypes to visualize
+CLONOTYPE <- c("TRGV5-CACWDSSGFHKVF-CGSDIGGSSWDTRQMFF-TRDV4","TRGV6-CACWDSSGFHKVF-CGSDIGGSSWDTRQMFF-TRDV4","TRGV1-CAVWIGTSWVKIF-CGSDIGGSSWDTRQMFF-TRDV4","TRGV4-CSYGYSSGFHKVF-CASGYIGGIRATDKLVF-TRDV5","TRGV4-CSYGYSSGFHKVF-CASGYRRDTDKLVF-TRDV5","TRGV4-CSYGYSSGFHKVF-CALMERGIRATDKLVF-TRDV2-2")
+
+# Set number of columns and Rows for final figure
+NCOL <- 3
+NROW <- 2
+
+# Set final figure size in inches (based on how many clonotypes we want to look at once)
+HEIGHT <- 13
+WIDTH <- 24
+```
+
+Now, run a common script based on the variables set above
+```{r}
+# Make specific subset based on the variables set in the previous step
+# Subset the data based on the selected hash type
+Idents(data_clust) <- "hash.type"
+data.subset <- subset(data_clust, idents = HASHTYPE)
+
+# Subset the data further based on the selected Seurat clusters
+Idents(data.subset) <- "seurat_clusters"
+data.subset <- subset(data.subset, idents = SEURAT_CLUSTERS)
+
+# Create an empty list to store the plots.
+plot_list <- list()
+
+# Loop through the clonotypes.
+for (i in seq_along(CLONOTYPE)) {
+  # Create a new column in metadata based on the matching condition
+  data.subset@meta.data <- data.subset@meta.data %>%
+    mutate(clonotype_renamed = ifelse(clonotype == CLONOTYPE[i], clonotype, "Others"))
+  # Identify the unique clonotypes in the subset
+  Idents(data.subset) <- "clonotype_renamed"
+  # Generate a dimensionality reduction plot for the current clonotype
+  plot <- DimPlot(data.subset, reduction = "umap", cols = c("grey", "blue"), label = FALSE, pt.size = 3, order = c(CLONOTYPE[i], "Others")) +
+    ggtitle(CLONOTYPE[i]) + NoLegend()
+  # Store the plot in the list
+  plot_list[[i]] <- plot
+}
+
+# Display the generated plots.
+for (i in seq_along(CLONOTYPE)) {
+  print(plot_list[[i]])
+}
+
+# Arrange the plots into a single figure
+figure <- ggarrange(plotlist=plot_list,
+                    hjust = -1.8, vjust = 1.1,
+                    ncol = NCOL, nrow = NROW)
+
+# Save the figure as a PNG file
+ggsave(figure, path="Figs", filename = paste(organ.id,"-", HASHTYPE.TITLE,"-",SEURAT_CLUSTERS.TITLE,".png", sep = ""),  height=HEIGHT, width=WIDTH, units='in', dpi = 300, bg = "transparent", device='png')
+
+# Save the figure as an SVG file
+#ggsave(figure, path="Figs", filename = paste(organ.id,"-", HASHTYPE.TITLE,"-",SEURAT_CLUSTERS.TITLE,".svg", sep = ""),  height=HEIGHT, width=WIDTH, units='in', dpi = 300, bg = "transparent", device='svg')
+```
+
