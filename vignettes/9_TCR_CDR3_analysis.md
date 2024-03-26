@@ -46,6 +46,11 @@ Click [here](/R_notebooks/9.4_clonotype_featureplot.Rmd) to access the R noteboo
 
 Click [here](/R_notebooks/9.5_clonotype_diversity_scRepertoire.Rmd) to access the R notebook. 
 
+This notebook harnesses the scRepertoire package to compute clonotype diversity indexes, Morisita overlap indexes, and visualize essential factors in single-cell immune repertoire analysis. While predominantly using scRepertoire for calculations, it deviates by utilizing the package's output values to generate graphs in GraphPad Prism, enhancing flexibility and customization in data visualization and interpretation beyond R's capabilities.
+
 <p align="center">
-<img src="../figs/9_clonotype_featureplot.png" alt="9_clonotype_featureplot" width="800"/>
+<img src="../figs/9_Repertoire_Diversity_Inv_Simpson.png" alt="9_Repertoire_Diversity_Inv_Simpson" width="800"/>
+</p>
+<p align="center">
+<img src="../figs/9_B6vsSAP_clonal_overlay.png" alt="9_B6vsSAP_clonal_overlay" width="900"/>
 </p>
