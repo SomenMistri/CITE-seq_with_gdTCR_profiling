@@ -108,7 +108,7 @@ write.xlsx(as.data.frame(data_group_final),paste0(organ.id,"-",SEURAT_CLUSTERS.T
 }
 ```
 
-Iterate through hash.type to generate individual lists of clonotypes from all the hash.IDs separately and make new sheets in the final appended .xlsx file
+Iterate through hash.ID to generate individual lists of clonotypes from all the hash.IDs separately and make new sheets in the final appended .xlsx file
 ```{r}
 Idents(data.subset) <- "hash.ID" # Set identifiers for 'hash.type'
 levels(data.subset@active.ident) # Extract the levels.
