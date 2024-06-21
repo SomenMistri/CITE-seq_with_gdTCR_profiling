@@ -16,14 +16,12 @@
 #Then rename the file as raw_data.txt
 
 #using cd navigate to the parent folder where "barcodes.tsv.gz" and "raw_data.txt" files are located
-mkdir "raw_data"
 mkdir "output_folder"
 #First, I want to keep only productive "TRUE" rows
 #in awk "==" means equal to and "!=" means not equal to
 #The following awk code will go to column 12 (productive) and print all lines that says "TRUE" in that column
 awk '$12 == "TRUE" { print $0}' raw_data.txt > data_productive.txt
 #now move the original data to a folder for future reference
-mv raw_data.txt raw_data
 
 ########### STEP 2 ##################
 #####Separate TRGV and TRD containing rows######
@@ -192,5 +190,13 @@ cut -d$'\t' -f1,3-21-  ${prefix}_barcode_matched.txt > ./barcode_matched_with_ge
 rm ${prefix}_barcode_matched.txt
 done
 
+# Now remove intermediate files and folders. If needed for troubleshooting, delete the following commands
+cd .
+rm -r data_productive
+rm -r Separated_TRGV_TRDV
+rm -r Barcode_seperated_TRGV
+rm -r Barcode_seperated_TRDV
+
+#Go to /output_folder/barcode_matched_with_gex/ 
 #Use excel to join the two final files side by side and replace "blank" field to NA
 #further editing will take place in excel  
