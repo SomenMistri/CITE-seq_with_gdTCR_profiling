@@ -1,29 +1,53 @@
-# Cellranger VDJ data processing for Seurat R package
+# Cellranger VDJ Data Processing for Seurat R Package
 
 ## Description
-This Bash script is designed to handle and process output data obtained from Cellranger VDJ, specifically focusing on gene expression data related to T-cell receptors (TRGV and TRDV).
-- [Custom Cellranger VDJ data processing for Seurat (2_custom_VDJ_data_processing.sh)](/bash_scripts/2_custom_VDJ_data_processing.sh). 
+This repository includes both **R notebooks** and a **Bash script** designed to process output data from Cellranger VDJ, focusing on gene expression data related to T-cell receptors (TRG and TRD/TRA for γδ TCR, and TRA and TRB for αβ TCR).
+
+### R Notebooks
+Two new R notebook files have been added for more detailed and flexible processing:
+- **[gdVDJ_cellranger_to_Seurat.Rmd](/R_notebook/gdVDJ_cellranger_to_Seurat.Rmd)** (for γδ TCR data)
+- **[abVDJ_cellranger_to_Seurat.Rmd](/R_notebook/abVDJ_cellranger_to_Seurat.Rmd)** (for αβ TCR data)
+
+These R Markdown files provide streamlined workflows to directly load and process Cellranger output data for integration with Seurat, a powerful R package for single-cell RNA sequencing analysis.
+
+#### gdVDJ_cellranger_to_Seurat.Rmd:
+This notebook is intended for the analysis of γδ TCR data. It requires two key input files:
+- **barcodes.tsv.gz**: Found in the Cellranger count output folder (`filtered_feature_bc_matrix`).
+- **all_contig_annotations.csv**: Found in the Cellranger VDJ output folder.
+
+The workflow in this R notebook ensures that:
+- Additional contigs per barcode (if present) are retained, with extra contigs labeled as `v_gene_g_2`, `v_gene_g_3`, etc., enabling more in-depth analysis of multiple TCR rearrangements per barcode.
+
+#### abVDJ_cellranger_to_Seurat.Rmd:
+This notebook is designed for the analysis of αβ TCR data and uses the following input files:
+- **barcodes.tsv.gz**: Found in the Cellranger count output folder (`filtered_feature_bc_matrix`).
+- **filtered_contig_annotations.csv**: From the Cellranger VDJ output folder, filtered to include only productive contigs.
+
+Like the γδ TCR workflow, this notebook keeps track of multiple contigs per barcode, labeling them sequentially as `v_gene_a_2`, `v_gene_a_3`, etc., allowing for more detailed downstream analysis. Unlike the γδ TCR workflow, this script only analyses productive sequences.
+
+### Bash Script (Older Version)
+- **[2_custom_VDJ_data_processing.sh](/bash_scripts/2_custom_VDJ_data_processing.sh)**
+
+This Bash script is the older method for processing Cellranger VDJ output. It performs tasks such as isolating productive rows, separating TRGV and TRDV rows, and demultiplexing data by barcode. However, note that it does not retain information for additional contigs beyond the first for each barcode, unlike the new R scripts.
 
 ## Purpose
-The script performs the following tasks:
-- **Isolate Productive Rows:** Filters and segregates rows marked as 'productive' based on the 'productive' column containing 'TRUE' values. Please note that, for γδTCR analysis, we need to start with the "all_contig_annotations.csv" file instead of the "filtered_contig_annotations.csv" file. Additionally, for γδTCR analysis, we need to keep all the rows irrespective of whether they are productive or not. 
-- **Separate TRGV and TRDV Rows:** Divides TRGV and TRDV/TRAV reads into separate files according to their identifiers.
-- **Separate Reads by Unique Barcodes:** Demultiplexes the data using unique barcodes, organizing them into individual files.
-- **Identify Contig Counts:** Determines the count of contigs (read sequences) per barcode and classifies them as single, double, or multiple based on the count.
-- **Data Organization and Header Addition:** Reorganizes columns, adds headers and arranges processed data into designated folders for TRGV and TRDV.
-- **Barcode Matching:** Merges processed data with barcodes from 'barcodes.tsv' (found in the cellranger count output folder - filtered_feature_bc_matrix), effectively linking each barcode from the GEX+ADT/HTO data with its TRGV/TRDV information. 
+The R notebooks and Bash script perform the following tasks:
+- **Isolate Productive Rows**: Filters and processes rows marked as 'productive' based on the 'productive' column in the Cellranger output.
+- **Separate TCR Chains**: Splits γδ TCR (TRGV and TRDV) or αβ TCR (TRA and TRB) into separate datasets for focused analysis.
+- **Barcode Demultiplexing**: Organizes data into individual files based on unique barcodes.
+- **Contig Count**: Tracks the number of contigs per barcode and retains multiple contigs for in-depth analysis.
 
 ## Instructions
 ### Pre-requisites
-- Ensure the 'raw_data.txt' file (which has been made from the all_contig_annotations.csv file) and 'barcodes.tsv.gz' files exist in the parent directory.
-- Ensure that column name formatting of the 'raw_data.txt' file matches with the provided [template.txt )](/references/template.txt) file.
-
+- For the R notebooks, ensure that `barcodes.tsv.gz` and either `all_contig_annotations.csv` (for γδ TCR) or `filtered_contig_annotations.csv` (for αβ TCR) are in the appropriate directory.
+- For the Bash script, ensure the `raw_data.txt` file (converted from `all_contig_annotations.csv`) and `barcodes.tsv.gz` exist in the parent directory.
 
 ### Execution
-1. Navigate to the directory containing the Cellranger VDJ output.
-2. Execute the script.
+1. For the R notebooks, open the respective `.Rmd` file in RStudio, provide the input files, and run the cells sequentially.
+2. For the Bash script, navigate to the directory containing the Cellranger VDJ output and execute the script.
 
 ### Finalization
-Navigate to the /output_folder/barcode_matched_with_gex/ folder and use Excel to manually pair barcode-linked TRGV and TRDV information together and perform additional processing or analysis on the processed data.
+For both methods, the final output includes barcodes linked with their respective TCR information, ready for integration into Seurat for downstream analysis.
 
-**Note:** Review the script carefully and follow the instructions. This script takes some to finish. It is possible to run this in VACC.
+**Note:** The R scripts provide more flexibility and retain additional contig information per barcode, making them suitable for more detailed analyses compared to the older Bash script.
+
