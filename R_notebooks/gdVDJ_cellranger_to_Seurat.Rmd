@@ -1,0 +1,191 @@
+---
+title: "R Notebook - Custom VDJ Processing - Cellranger to Seurat compatible format"
+output: html_notebook
+---
+
+#### Load required packages:
+To load the required packages, execute the following code:
+
+```{r}
+library(tidyverse)
+library(Matrix)
+library(RCurl)
+library(openxlsx)
+library(here)
+library(dplyr)
+library(writexl)
+```
+
+Note: If you haven't installed the packages yet, please install them before loading.
+
+#### Data loading
+Load barcode.tsv.gz file from "cellranger count" output and "filtered_contig_annotations.csv" file (for ab T cells) or "raw_contig_annotations.csv" file (for gd T cells)
+```{r}
+# Read the .tsv.gz file that contains barcodes from the cellranger count output
+barcodes <- read.delim(gzfile(here("data", "barcodes.tsv.gz")), header = FALSE, stringsAsFactors = FALSE)
+colnames(barcodes) <- c("barcode")
+
+# Read the CSV file
+data <- read.csv(here("data", "all_contig_annotations.csv"), header = TRUE, stringsAsFactors = FALSE)
+```
+
+#### Split the filtered data into TRG and TRD (TRD and TRA)
+```{r}
+
+data_TRG <- data %>%
+  filter(chain == "TRG")
+
+data_TRD <- data %>%
+  filter(chain == "TRD" | chain == "TRA")
+
+# Rename columns in data_TRG while keeping 'barcode' unchanged
+data_TRG <- data_TRG %>%
+  rename_with(~ paste0(., "_g"), -barcode)  # Exclude 'barcode' from renaming
+
+# Rename columns in data_TRD_or_TRA while keeping 'barcode' unchanged
+data_TRD <- data_TRD %>%
+  rename_with(~ paste0(., "_d"), -barcode)  # Exclude 'barcode' from renaming
+```
+
+#### processing of data_TRG
+
+```{r}
+# Initialize an empty data frame to store the output
+data_TRG_output <- data.frame()
+
+# Get unique barcodes in the order they appear
+unique_barcodes <- unique(data_TRG$barcode)
+
+# Loop through each unique barcode
+for (barcode in unique_barcodes) {
+  # Filter the data for the current barcode
+  current_data <- data_TRG %>%
+    filter(barcode == !!barcode)
+
+  # Count the number of rows for the current barcode, excluding the header
+  total_contigs_g <- nrow(current_data)
+
+  # Sum the reads column for the current barcode
+  sum_reads <- sum(current_data$reads_g)
+
+  # Calculate frequency of the current barcode
+  contig_freq_g <- current_data$reads_g / sum_reads
+
+  # Create a new data frame for the current barcode and move total_contigs column
+  current_output <- current_data %>%
+    mutate(total_contigs_g = total_contigs_g,
+           contig_freq_g = contig_freq_g) %>%
+    select(barcode, total_contigs_g, contig_freq_g, everything()) %>%
+    arrange(desc(contig_freq_g))
+
+  # Check the number of rows and consolidate into one row
+  if (nrow(current_output) > 1) {
+    # Create a new data frame with consolidated information
+    consolidated_output <- data.frame(barcode = barcode)
+
+    for (i in 1:nrow(current_output)) {
+      # For each row, add its content to the consolidated output
+      row_data <- current_output[i, -1]  # Exclude barcode column
+      
+      # Rename columns for all rows except the first one
+      if (i > 1) {
+        colnames(row_data) <- paste0(colnames(row_data), "_", i)
+      }
+
+      consolidated_output <- cbind(consolidated_output, row_data)
+    }
+    
+    # Add the consolidated output to the final output data frame
+    data_TRG_output <- bind_rows(data_TRG_output, consolidated_output)
+  } else {
+    # For single row barcodes, just add the current output
+    data_TRG_output <- bind_rows(data_TRG_output, current_output)
+  }
+}
+```
+
+
+#### processing of data_TRD
+
+```{r}
+# Initialize an empty data frame to store the output
+data_TRD_output <- data.frame()
+
+# Get unique barcodes in the order they appear
+unique_barcodes <- unique(data_TRD$barcode)
+
+# Loop through each unique barcode
+for (barcode in unique_barcodes) {
+  # Filter the data for the current barcode
+  current_data <- data_TRD %>%
+    filter(barcode == !!barcode)
+
+  # Count the number of rows for the current barcode, excluding the header
+  total_contigs_d <- nrow(current_data)
+
+  # Sum the reads column for the current barcode
+  sum_reads <- sum(current_data$reads_d)
+
+  # Calculate frequency of the current barcode
+  contig_freq_d <- current_data$reads_d / sum_reads
+
+  # Create a new data frame for the current barcode and move total_contigs column
+  current_output <- current_data %>%
+    mutate(total_contigs_d = total_contigs_d,
+           contig_freq_d = contig_freq_d) %>%
+    select(barcode, total_contigs_d, contig_freq_d, everything()) %>%
+    arrange(desc(contig_freq_d))
+
+  # Check the number of rows and consolidate into one row
+  if (nrow(current_output) > 1) {
+    consolidated_output <- data.frame(barcode = barcode)
+
+    for (i in 1:nrow(current_output)) {
+      row_data <- current_output[i, -1]
+      if (i > 1) {
+        colnames(row_data) <- paste0(colnames(row_data), "_", i)
+      }
+      consolidated_output <- cbind(consolidated_output, row_data)
+    }
+    data_TRD_output <- bind_rows(data_TRD_output, consolidated_output)
+  } else {
+    data_TRD_output <- bind_rows(data_TRD_output, current_output)
+  }
+}
+```
+
+### Merge data_TRG_output and data_TRD_output with the barcodes object
+```{r}
+# Join barcodes with data_TRG_output
+merged_TRG <- left_join(barcodes, data_TRG_output, by = "barcode")
+
+# Join barcodes with data_TRD_output
+merged_TRD <- left_join(barcodes, data_TRD_output, by = "barcode")
+
+# Merge the two data frames based on the barcode column
+merged_combined <- left_join(merged_TRG, merged_TRD, by = "barcode")
+```
+
+### reorder the columns to keep top contigs of TRG and TRD/TRA in close proximity. Finally export the merged_combined as an excel file
+```{r}
+# Get the column names for extensions "_g" and "_d"
+cols_g <- grep("_g$", names(merged_combined), value = TRUE)
+cols_d <- grep("_d$", names(merged_combined), value = TRUE)
+
+# Get the remaining columns that do not have "_g" or "_d"
+remaining_cols <- setdiff(names(merged_combined), c(cols_g, cols_d))
+
+# Reorder the columns: first "_g", then "_d", followed by the remaining columns
+final_order <- c("barcode", cols_g, cols_d, remaining_cols)
+
+# Reorganize the merged_combined data frame based on the final column order
+merged_combined <- merged_combined %>%
+  select(all_of(final_order))
+
+# Export the merged_combined data frame to an Excel file
+write_xlsx(merged_combined, here("results", "merged_barcode_TRG_TRD.xlsx"))
+```
+
+
+
+------End------
