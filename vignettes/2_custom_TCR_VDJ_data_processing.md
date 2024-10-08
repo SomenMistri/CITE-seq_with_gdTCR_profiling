@@ -5,8 +5,8 @@ This repository includes both **R notebooks** and a **Bash script** designed to 
 
 ### R Notebooks
 Two new R notebook files have been added for more detailed and flexible processing:
-- **[gdVDJ_cellranger_to_Seurat.Rmd](/R_notebook/gdVDJ_cellranger_to_Seurat.Rmd)** (for γδ TCR data)
-- **[abVDJ_cellranger_to_Seurat.Rmd](/R_notebook/abVDJ_cellranger_to_Seurat.Rmd)** (for αβ TCR data)
+- **[gdVDJ_cellranger_to_Seurat.Rmd](/R_notebooks/gdVDJ_cellranger_to_Seurat.Rmd)** (for γδ TCR data)
+- **[abVDJ_cellranger_to_Seurat.Rmd](/R_notebooks/abVDJ_cellranger_to_Seurat.Rmd)** (for αβ TCR data)
 
 These R Markdown files provide streamlined workflows to directly load and process Cellranger output data for integration with Seurat, a powerful R package for single-cell RNA sequencing analysis.
 
