@@ -18,7 +18,7 @@ Performing custom analysis specifically on TCR sequences to generate a specializ
 ### Step 3: [**Make seurat object, filter cells, and demultiplex the hashtags**](/vignettes/3_QC_filter_and_demux.md)
 Integrating different omics data, filtering cells based on quality metrics and demultiplexing the hashtags to separate the pooled biological replicates.
 
-### Step 4: [**Data normalization, clustering, and basic visualization**](/vignettes/4_integration_normalization_clustering_BasicViz.md)
+### Step 4: [**Data normalization, clustering, and basic visualization**](/vignettes/4_Normalization_clustering_BasicViz.md)
 Integrating different omics data, normalizing, clustering cells based on similarities, and providing initial visualizations for basic exploration.
 
 ### Step 5: [**Cluster frequency comparison**](/vignettes/5_cluster_freq_comparison_between_samples.md)
