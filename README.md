@@ -21,7 +21,7 @@ Integrating different omics data, filtering cells based on quality metrics and d
 ### Step 4: [**Data normalization, clustering, and basic visualization**](/vignettes/4_Normalization_clustering_BasicViz.md)
 Integrating different omics data, normalizing, clustering cells based on similarities, and providing initial visualizations for basic exploration.
 
-### Step 5: [**Cluster frequency comparison**](/vignettes/5_cluster_freq_comparison_between_samples.md)
+### Step 5: [**Cluster frequency comparison**](vignettes/5_cluster_freq_calculation.md)
 Comparing cluster frequencies across different clusters between experimental groups to identify variations or similarities.
 
 ### Step 6: [**pseudo-bulk DGE analysis**](/vignettes/6_pseudo-bulk_DGE_analysis.md)
