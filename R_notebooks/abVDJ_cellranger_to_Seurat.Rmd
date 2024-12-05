@@ -1,5 +1,5 @@
 ---
-title: "R Notebook - Custom VDJ Processing - Cellranger to Seurat compatible format"
+title: "R Notebook - Custom abVDJ Processing - Cellranger to Seurat compatible format"
 output: html_notebook
 ---
 
@@ -55,9 +55,12 @@ data_TRB <- data_TRB %>%
   rename_with(~ paste0(., "_b"), -barcode)  # Exclude 'barcode' from renaming
 ```
 
-#### processing of data_TRA
+#### processing of data_TRA and data_TRB
 
 ```{r}
+
+####### Processing of data_TRA #######
+
 # Initialize an empty data frame to store the output
 data_TRA_output <- data.frame()
 
@@ -110,12 +113,10 @@ for (barcode in unique_barcodes) {
     data_TRA_output <- bind_rows(data_TRA_output, current_output)
   }
 }
-```
 
 
-#### processing of data_TRB
+####### Processing of data_TRB #######
 
-```{r}
 # Initialize an empty data frame to store the output
 data_TRB_output <- data.frame()
 
@@ -168,10 +169,8 @@ for (barcode in unique_barcodes) {
     data_TRB_output <- bind_rows(data_TRB_output, current_output)
   }
 }
-```
 
 ### Merge data_TRA_output and data_TRB_output with the barcodes object
-```{r}
 # Join barcodes with data_TRA_output
 merged_TRA <- left_join(barcodes, data_TRA_output, by = "barcode")
 
@@ -180,10 +179,8 @@ merged_TRB <- left_join(barcodes, data_TRB_output, by = "barcode")
 
 # Merge the two data frames based on the barcode column
 merged_combined <- left_join(merged_TRA, merged_TRB, by = "barcode")
-```
 
 ### reorder the columns to keep top contigs of TRA and TRB in close proximity. Finally export the merged_combined as an excel file
-```{r}
 # Get the column names for extensions "_a" and "_b"
 cols_a <- grep("_a$", names(merged_combined), value = TRUE)
 cols_b <- grep("_b$", names(merged_combined), value = TRUE)
