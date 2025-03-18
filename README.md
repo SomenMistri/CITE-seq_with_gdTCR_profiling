@@ -1,4 +1,4 @@
-# Single-cell CITE-seq with γδTCR Repertoire Profiling
+# CITE-seq with γδTCR Repertoire Profiling
 
 This GitHub repository contains a pipeline for analyzing single-cell CITE-seq data with TCR repertoire profiling of γδ T cells.
 
