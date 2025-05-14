@@ -2,6 +2,7 @@
 title: "R Notebook on 9.3_clonotype_top100_bubbleplot"
 output: html_notebook
 ---
+#### Note: Some parts of this script is not complete. Please run with caution.
 #### Get the input file:
 After the "4_Normalization_clustering_BasicViz" step, there should be a file named "data_clust_cc_stress_regressed.rds". Copy this file to the current folder where you have this .rmd file ("5_cluster_freq_calculation").
 
