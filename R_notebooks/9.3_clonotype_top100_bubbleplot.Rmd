@@ -18,7 +18,7 @@ library(patchwork)
 library(ggrepel)
 library(RColorBrewer)
 library(tidyr)
-library("xlsx")
+library(openxlsx)
 library(packcircles)
 library(viridis)
 ```
@@ -29,7 +29,7 @@ Note: If you haven't installed the packages yet, please install them before load
 Read the clustered data by running the following code:
 
 ```{r}
-data_clust <- readRDS("data_clust_cc_stress_regressed.rds")
+data_clust <- readRDS("data_clust_cc_regressed.rds")
 
 # Let's take a look at the data to ensure everything looks good
 DimPlot(data_clust, reduction = "umap", label = TRUE) + NoLegend()
@@ -39,7 +39,7 @@ DimPlot(data_clust, reduction = "umap", label = TRUE) + NoLegend()
 In this section, TRGV specific variables are declared to subset specific cell types or specific clusters or specific TRGV+ cells. Also, the variables are used to generate the final file name automatically. 
 Moreover, here the color coding is for separating specific TRDV+ clonotypes from each other.
 ```{r}
-organ.id <- "E17"  # 'organ.id' represents the identifier for the specific organ or sample used in the analysis, set as "E17".
+organ.id <- "katherine"  # 'organ.id' represents the identifier for the specific organ or sample used in the analysis, set as "E17".
 
 # Arrays specifying all available cell types and clusters for subsequent analysis and naming conventions
 hash.all <- levels(data_clust@meta.data$hash.type)
@@ -48,8 +48,8 @@ trgv.all <- levels(data_clust@meta.data$v_gene_g)
 
 
 # Define the specific hash.type clusters to analyze, either "B6" or "SAP". Adjust 'HASHTYPE.TITLE' accordingly.
-HASHTYPE <- "B6" #Default = hash.all
-HASHTYPE.TITLE <- "B6"
+HASHTYPE <- "KS" #Default = hash.all
+HASHTYPE.TITLE <- "KS"
 
 
 # Define the specific clusters to analyze, either "0" or a specific set or use all available clusters 'cluster.all'. Adjust 'SEURAT_CLUSTERS.TITLE' accordingly.
@@ -61,35 +61,51 @@ V_GENE_G <- "TRGV4"
 V_GENE_G.TITLE <- "trgv4"
 
 # Define the number of dots (unique clonotypes) to be shown. Here, the default is 100. 
-DOTS <- 100
-DOTS_Title <- "100"
+DOTS <- 50
+DOTS_Title <- "50"
 ```
 
 Now, run a common script based on the variables set above
 ```{r}
-#Set up levels of TRDV genes
-data_clust$v_gene_d <- factor(data_clust$v_gene_d, levels =c("TRDV1","TRDV2","TRDV4","TRDV5","TRDV6","TRDV7","TRDV8","TRDV9","TRDV10","TRDV11","TRDV12","TRAV15N-1","TRAVs","NA"))
-
 # Removal of "NA" from both gamma and delta chain important for this script to work
-Idents(data_clust) <- "v_gene_d" 
-data.subset <- subset(data_clust, idents = "NA", invert=TRUE) # (If there is no "NA", please skip this line)
+# Replace NA values in v_gene_g with "NA"
+data_clust@meta.data$v_gene_g[is.na(data_clust@meta.data$v_gene_g)] <- "NA"
+data_clust@meta.data$v_gene_d[is.na(data_clust@meta.data$v_gene_d)] <- "NA"
+data_clust@meta.data$cdr3_g[is.na(data_clust@meta.data$cdr3_g)] <- "NA"
+data_clust@meta.data$cdr3_d[is.na(data_clust@meta.data$cdr3_d)] <- "NA"
+data_clust@meta.data$j_gene_g[is.na(data_clust@meta.data$j_gene_g)] <- "NA"
+data_clust@meta.data$d_gene_d[is.na(data_clust@meta.data$d_gene_d)] <- "NA"
+data_clust@meta.data$j_gene_d[is.na(data_clust@meta.data$j_gene_d)] <- "NA"
+
+sum(is.na(data_clust@meta.data$v_gene_g))
+sum(is.na(data_clust@meta.data$v_gene_d))
+sum(is.na(data_clust@meta.data$cdr3_g))
+sum(is.na(data_clust@meta.data$cdr3_d))
+
+#Set up levels of TRDV genes
+data_clust$v_gene_d <- factor(data_clust$v_gene_d, levels =c(c("TRAV12-3", "TRAV13-4/DV7", "TRAV13-5", "TRAV13D-1", "TRAV13D-2", "TRAV13D-3", 
+  "TRAV13D-4", "TRAV13N-2", "TRAV14-1", "TRAV14-2", "TRAV14D-3/DV8", 
+  "TRAV15-1/DV6-1", "TRAV15D-2/DV6D-2", "TRAV15N-1", "TRAV16N", "TRAV21/DV12", 
+  "TRAV23", "TRAV3-4", "TRAV5D-4", "TRAV6D-7", "TRAV7-6", "TRDV1", "TRDV2-2", 
+  "TRDV4", "TRDV5", "NA")))
+
+Idents(data_clust) <- "v_gene_d"
+data.subset <- subset(data_clust, idents = "NA", invert=TRUE)
 
 Idents(data.subset) <- "v_gene_g"
 data.subset <- subset(data.subset, idents = V_GENE_G) # (If there is no "NA", please skip this line)
 
 Idents(data.subset) <- "cdr3_g"
-data.subset <- subset(data.subset, idents = "NA", invert=TRUE) # (If there is no "NA", please skip this line)
+#data.subset <- subset(data.subset, idents = "NA", invert=TRUE) # (If there is no "NA", please skip this line)
 
 Idents(data.subset) <- "cdr3_d"
 data.subset <- subset(data.subset, idents = "NA", invert=TRUE) # (If there is no "NA", please skip this line)
 
-
-#Make specific subset based on the variables set in the previous step
 Idents(data.subset) <- "hash.type"
 data.subset <- subset(data.subset, idents = HASHTYPE)
 
-Idents(data.subset) <- "seurat_clusters"
-data.subset <- subset(data.subset, idents = SEURAT_CLUSTERS) # (If there is any cluster missing in the subsetted data, this line will not work. in that case just skip the line)
+#Idents(data.subset) <- "seurat_clusters"
+#data.subset <- subset(data.subset, idents = SEURAT_CLUSTERS) # (If there is any cluster missing in the subsetted data, this line will not work. in that case just skip the line)
 data.subset.vdj <- as.data.frame(data.subset@meta.data)
 
 #Now group based on Unique CDR3s
@@ -127,8 +143,7 @@ sum_cell <- sum(data_group_final3$Count)
 data_group_freq <- data_group_final3%>%                   
   mutate(freq = Count/sum_cell)
 
-
-# Keep the top 100 or 50 (DOTS) clones 
+# Keep the top 100 or 50 or 47(DOTS) clones. Update the DOTs value above to make sure it does not exceed the total number of clonotypes found in the subset
 data_group_DOTS <- head(data_group_freq, DOTS)
 data_group_DOTS_save <- tibble::rownames_to_column(data_group_DOTS, "Clonotype_ID")
 write.xlsx(as.data.frame(data_group_DOTS_save),paste0(organ.id,"-",HASHTYPE.TITLE,"-",V_GENE_G.TITLE,"-",SEURAT_CLUSTERS.TITLE,".xlsx", sep = ""), row.names=FALSE, col.names = TRUE, append = FALSE)
@@ -139,15 +154,43 @@ packing <- circleProgressiveLayout(data_group_DOTS$freq, sizetype='area')
 data_group_pack <- cbind(data_group_DOTS, packing)
 dat.gg <- circleLayoutVertices(packing, npoints=DOTS)
 packing2 <- cbind(packing, data_group_pack$v_gene_d)
+# change column name
+packing2 <- data.frame(
+  x = packing$x,
+  y = packing$y,
+  radius = packing$radius,
+  v_gene_d = data_group_pack$v_gene_d
+)
+#Make the v_gene_d Values Unique (this is to solve the issue with the "circleLayoutVertices" argument in the following step)
+packing2 <- packing2 %>%
+  group_by(v_gene_d) %>%
+  mutate(v_gene_d = paste0(v_gene_d, "_", row_number())) %>%
+  ungroup()
+
 dat.gg2 <- circleLayoutVertices(packing2, npoints=DOTS, idcol = 4)
 # add v_gene_g info the the dat.gg file. This will help with coloring
 dat.gg.bind <- cbind(dat.gg, dat.gg2$id)
 #rename column names
 colnames(dat.gg.bind) <- c('x','y','id','v_gene_d')
 
+# remove the unwanted part ("_") of each string in the v_gene_d column that I introduced to make the values unique
+dat.gg.bind$v_gene_d <- sub("_\\d+$", "", dat.gg.bind$v_gene_d)
+
 # Set up color code for TRDV chains
-chainname <- c("TRDV1","TRDV2","TRDV4","TRDV5","TRDV6","TRDV7","TRDV8","TRDV9","TRDV10","TRDV11","TRDV12","TRAV15N-1","TRAVs","NA") # this is all the chains we may ever expect
-colorHex <- c("#fddbc7","#c2a5cf","#de77ae","#fdae61","#c7eae5","#ffffbf","#e6f5d0","#bababa","#8c510a","#003c30","#80cdc1","#7fbc41","#f7f7f7","#1a1a1a") # This is the the chosen color scheme for each of the expected TRDV chains. Edit this color scheme and order to fit the total number of unique TRDV chains identified
+chainname <- c(chainname <- c(
+  "TRDV1", "TRDV2-2", "TRDV4", "TRDV5", 
+  "TRAV12-3", "TRAV13-4/DV7", "TRAV13-5", "TRAV13D-1", "TRAV13D-2", "TRAV13D-3", 
+  "TRAV13D-4", "TRAV13N-2", "TRAV14-1", "TRAV14-2", "TRAV14D-3/DV8", 
+  "TRAV15-1/DV6-1", "TRAV15D-2/DV6D-2", "TRAV15N-1", "TRAV16N", "TRAV21/DV12", 
+  "TRAV23", "TRAV3-4", "TRAV5D-4", "TRAV6D-7", "TRAV7-6", "NA"
+)) 
+colorHex <- c(colorHex <- c(
+  "#fddbc7", "#c2a5cf", "#de77ae", "#fdae61", "#c7eae5", "#ffffbf", 
+  "#e6f5d0", "#bababa", "#8c510a", "#003c30", "#80cdc1", "#7fbc41", 
+  "#f7f7f7", 
+  "#b3e2cd", "#fdcdac", "#cbd5e8", "#f4cae4", "#e6f598", "#abd9e9", 
+  "#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3", "#a6d854", "#ffd92f","#1a1a1a"
+)) # This is the the chosen color scheme for each of the expected TRDV chains. Edit this color scheme and order to fit the total number of unique TRDV chains identified
 
 colorbank <- data.frame(chainname,colorHex)
 
@@ -170,7 +213,7 @@ ggplot() +
 
 ggsave(path = "Figs", filename = paste(organ.id,"-",HASHTYPE.TITLE,"-",V_GENE_G.TITLE,"-",SEURAT_CLUSTERS.TITLE,"-",DOTS_Title,"clones.png", sep = ""),  height=5, width=8, units='in', dpi = 300, bg = "transparent", device='png')
 
-#ggsave(path = "Figs", filename = paste(organ.id,"-",HASHTYPE.TITLE,"-",V_GENE_G.TITLE,"-",SEURAT_CLUSTERS.TITLE,"-",DOTS_Title,"clones.svg", sep = ""),  height=5, width=8, units='in', dpi = 300, bg = "transparent", device='svg')
+ggsave(path = "Figs", filename = paste(organ.id,"-",HASHTYPE.TITLE,"-",V_GENE_G.TITLE,"-",SEURAT_CLUSTERS.TITLE,"-",DOTS_Title,"clones.pdf", sep = ""),  height=5, width=8, units='in', dpi = 300, bg = "transparent", device='pdf')
 
 #################
 # Note: The actual sequences of the top clonotypes of the bubble plot can be inferred from the .xlsx file of the same name that this script automatically produces
